@@ -20,12 +20,12 @@ export function DetailPanel() {
   }, [d?.meta.id]);
   // the demo iframe steals focus on load and scrolls the panel; pin it back to the top
   useEffect(() => { const t = setTimeout(() => ref.current?.scrollTo({ top: 0 }), 300); const t2 = setTimeout(() => ref.current?.scrollTo({ top: 0 }), 1200); return () => { clearTimeout(t); clearTimeout(t2); }; }, [d?.meta.id, tab]);
-  if (!d) return <aside className="panel drag"><div className="empty">Select a pattern to see its spec, demo and skill.</div></aside>;
+  if (!d) return null;
   const hasSpec = !!d.spec;
   const skillUnlocked = ['demo_done', 'skill_ready'].includes(d.meta.status);
   const cover = d.cover ?? d.demoScreenshots[0] ?? d.frames[0];
   return (
-    <aside className="panel" key={d.meta.id} ref={ref}>
+    <main className="panel workspace" key={d.meta.id} ref={ref}>
       <div className="cover drag">{cover ? <img src={api.fileUrl(cover) + '?v=' + d.meta.demo_screenshot_count + '-' + (d.cover ? 'c' : 'f')} alt="" key={cover + d.meta.demo_screenshot_count} /> : 'no frames'}</div>
       <div className="title-row">
         <h1><input key={d.meta.name} defaultValue={d.meta.name} onBlur={(e) => e.target.value !== d.meta.name && updateMeta(d.meta.id, { name: e.target.value })} /></h1>
@@ -51,6 +51,6 @@ export function DetailPanel() {
         <button onClick={() => api.showInFinder(d.skillMd ? `${d.dir}/skill` : d.dir)}>{I.pencil} Open in Finder</button>
         <button className="primary" disabled={!skillUnlocked} onClick={() => setTab('skill')}>View Skill →</button>
       </div>
-    </aside>
+    </main>
   );
 }

@@ -7,15 +7,14 @@ import { MethodPicker } from './components/MethodPicker';
 import { McpPanel } from './components/McpPanel';
 
 export default function App() {
-  const { init, showMethodPicker } = useStore();
+  const { init, showMethodPicker, current } = useStore();
   const [picker, setPicker] = useState(false);
   const [mcp, setMcp] = useState(false);
   useEffect(() => { init(); }, [init]);
   return (
-    <div className="app">
+    <div className={`app ${current ? 'work' : 'browse'}`}>
       <Sidebar onSettings={() => setMcp(true)} />
-      <Library onPickMethod={() => setPicker(true)} />
-      <DetailPanel />
+      {current ? <DetailPanel /> : <Library onPickMethod={() => setPicker(true)} />}
       {(showMethodPicker || picker) && <MethodPicker onClose={picker ? () => setPicker(false) : undefined} />}
       {mcp && <McpPanel onClose={() => setMcp(false)} onPickMethod={() => { setMcp(false); setPicker(true); }} />}
     </div>
