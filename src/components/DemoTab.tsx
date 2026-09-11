@@ -5,10 +5,12 @@ import { Markdown } from './Markdown';
 import { JobLog } from './JobLog';
 import { api } from '../api';
 import { NameDialog } from './NameDialog';
+import { TweaksPanel } from './TweaksPanel';
 
 export function DemoTab({ d }: { d: PatternDetail }) {
   const { generateDemo, screenshot, feedback, confirmDemo, saveVariant, restoreVariant, deleteVariant, forkPattern } = useStore();
   const [preview, setPreview] = useState<string | null>(null);
+  const [frameEl, setFrameEl] = useState<HTMLIFrameElement | null>(null);
   const [dialog, setDialog] = useState<{ title: string; initial: string; label: string; run: (v: string) => Promise<void> } | null>(null);
   const jobs = useStore((s) => s.jobs);
   const running = runningJobsFor(jobs, d.meta.id).length > 0;
@@ -38,7 +40,8 @@ export function DemoTab({ d }: { d: PatternDetail }) {
               {!done && <button className="primary sm" disabled={running} onClick={() => confirmDemo(id)} title="确认后 Claude 会把你的校正合并回 spec 并精简">确认 demo ✓</button>}
               {done && <span className="status" style={{ ['--sc' as string]: 'var(--s-done)' }}>已确认</span>}
             </div>
-            <ScaledFrame src={api.fileUrl(preview ?? d.demoIndex) + '?r=' + reloadKey} />
+            <ScaledFrame src={api.fileUrl(preview ?? d.demoIndex) + '?r=' + reloadKey} onFrame={setFrameEl} />
+            {!preview && <TweaksPanel iframe={frameEl} patternId={id} running={running} loadKey={reloadKey} />}
             <div className="row variants">
               <h3>方案 · {d.variants.length}</h3><span className="spacer" />
               <button className="sm" disabled={running} onClick={() => setDialog({ title: '另存当前 demo 为方案', initial: `方案 ${d.variants.length + 1}`, label: '另存', run: (n) => saveVariant(id, n) })}>另存当前 demo</button>
@@ -82,7 +85,7 @@ export function DemoTab({ d }: { d: PatternDetail }) {
 }
 
 /** The demo is authored at a fixed 960×600; scale it to fit whatever width the pane has. */
-function ScaledFrame({ src }: { src: string }) {
+function ScaledFrame({ src, onFrame }: { src: string; onFrame?: (el: HTMLIFrameElement | null) => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
   useEffect(() => {
@@ -92,7 +95,7 @@ function ScaledFrame({ src }: { src: string }) {
   }, []);
   return (
     <div className="iframewrap" ref={ref} style={{ height: 600 * scale, aspectRatio: 'auto' }}>
-      <iframe key={src} src={src} sandbox="allow-scripts allow-same-origin" title="demo" style={{ width: 960, height: 600, transform: `scale(${scale})`, transformOrigin: 'top left' }} />
+      <iframe key={src} ref={onFrame} src={src} sandbox="allow-scripts allow-same-origin" title="demo" style={{ width: 960, height: 600, transform: `scale(${scale})`, transformOrigin: 'top left' }} />
     </div>
   );
 }

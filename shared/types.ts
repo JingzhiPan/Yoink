@@ -64,7 +64,7 @@ export interface Settings {
   ffmpegPath: string | null;
 }
 
-export type JobKind = 'extract' | 'parse' | 'verify' | 'demo' | 'screenshot' | 'feedback' | 'consolidate' | 'skill';
+export type JobKind = 'extract' | 'parse' | 'verify' | 'demo' | 'screenshot' | 'feedback' | 'consolidate' | 'tweaks' | 'skill';
 
 export interface JobEvent {
   jobId: string;

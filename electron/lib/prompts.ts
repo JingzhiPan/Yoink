@@ -46,7 +46,12 @@ export const DEMO_CONVENTION = `demo 约定（必须遵守）：
 - 在 index.html 里定义 window.__yoink = { states: { "initial": async () => {}, "<state-name>": async () => { /* 用代码把页面推进到该状态，比如派发 click/hover 事件 */ } } }。
   状态名用 kebab-case，顺序按交互流程；每个 state 函数执行后页面应静止在该状态（等待动画结束后再 resolve）。至少 2 个状态，最多 6 个。
 - 不要依赖真实鼠标位置：hover 类状态用添加 class 或派发 pointer 事件模拟。
-- 不要用 alert/console 噪音。`;
+- 不要用 alert/console 噪音。
+- Tweaks 约定：把最值得调的参数（时长、缓动/弹簧、颜色、尺寸、阈值，6–14 个）写成 :root 上的 CSS 变量，放在 <style id="yoink-tweaks">:root{ --x: 300ms; ... }</style> 这个独立 style 块里（只放变量，一行一个）。JS 里需要这些数值时用
+  const tweak = (k) => getComputedStyle(document.documentElement).getPropertyValue(k).trim();
+  在每次用到时现读（不要启动时缓存），这样外部改变量能实时生效。再声明清单：
+  window.__yoink.tweaks = [{ key: "--x", label: "展开时长", type: "range", min: 100, max: 1200, step: 10, unit: "ms" }, { key: "--accent", label: "主色", type: "color" }, ...]
+  type 只有 range / color / text；range 的值写成 数字+unit（unit 可为空）。`;
 
 export function demoPrompt(spec: string, frames: string[]): string {
   return `根据下面这份经过验证的 UI 交互 spec，在当前目录写出一个可运行的 working demo。先用 Read 看关键帧（原始视频抽出来的）以对齐视觉细节，再写代码。
@@ -186,4 +191,16 @@ SPEC
 <<<FEEDBACK
 ${feedback || '（无）'}
 FEEDBACK`;
+}
+
+export function tweaksPrompt(): string {
+  return `当前目录下 demo/index.html 是一个 UI 交互 demo。请用 Read 读取它，然后用 Edit 把它重构成符合下面 Tweaks 约定的版本（行为和外观保持完全一致，只是把硬编码的参数抽成变量）：
+
+${DEMO_CONVENTION}
+
+要求：
+- 挑最影响手感和观感的 6–14 个参数：动画时长、缓动/弹簧参数、关键颜色、关键尺寸、阈值。
+- CSS 里所有用到这些参数的地方改为 var(--x)；JS 里改为现读 tweak("--x")（时长要 parseFloat）。
+- 保持 window.__yoink.states 不变。
+- 改完只回复一行：抽出了哪些 key。`;
 }

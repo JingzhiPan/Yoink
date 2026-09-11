@@ -207,3 +207,14 @@ a { color: var(--terra); }
 .variant .vname { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
 .variant .hint { font-family: var(--mono); font-size: 11px; }
 .variant-list .callout { display: flex; align-items: center; gap: 8px; padding: 6px 10px; }
+
+/* tweaks */
+.tweaks { border: 1px solid var(--line); border-radius: 10px; background: var(--card); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.tweaks.empty { flex-direction: row; align-items: center; justify-content: space-between; }
+.tweak-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 6px 18px; }
+.tweak { display: grid; grid-template-columns: 110px 1fr 64px; align-items: center; gap: 8px; font-size: 12.5px; }
+.tweak .tl { color: var(--ink2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tweak .tv { font-family: var(--mono); font-size: 11px; color: var(--ink2); text-align: right; white-space: nowrap; overflow: hidden; }
+.tweak input[type=range] { width: 100%; accent-color: var(--terra); }
+.tweak input[type=color] { width: 40px; height: 26px; padding: 0 2px; border-radius: 6px; }
+.tweak input[type=text] { grid-column: 2 / 4; padding: 3px 8px; font-size: 12px; }

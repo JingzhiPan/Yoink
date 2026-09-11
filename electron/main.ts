@@ -7,7 +7,7 @@ import { LIBRARY_ROOT, binary } from './lib/paths.js';
 import { extractFrames, makeUploadCopy } from './lib/ffmpeg.js';
 import { runClaude, extractJson } from './lib/claude.js';
 import { parseSpec, slugify } from './lib/parser.js';
-import { verifyPrompt, demoPrompt, feedbackPrompt, comparePrompt, skillPrompt, computerUsePrompt, consolidatePrompt } from './lib/prompts.js';
+import { verifyPrompt, demoPrompt, feedbackPrompt, comparePrompt, skillPrompt, computerUsePrompt, consolidatePrompt, tweaksPrompt } from './lib/prompts.js';
 import { screenshotDemo } from './lib/screenshot.js';
 import { parseWithOpenAI } from './lib/openai.js';
 import { makeCover, coverPath } from './lib/cover.js';
@@ -200,6 +200,34 @@ async function stepConsolidate(jobId: string, id: string): Promise<PatternMeta> 
   });
 }
 
+async function stepTweaks(jobId: string, id: string): Promise<PatternMeta> {
+  return runJob(jobId, id, 'tweaks', async (log, signal) => {
+    const d = await lib.getPattern(id);
+    if (!d.demoIndex) throw new Error('还没有 demo');
+    log('Claude Code 正在把 demo 的参数抽成 tweaks…');
+    await runClaude({ prompt: tweaksPrompt(), cwd: d.dir, allowedTools: ['Read', 'Write', 'Edit'], onLog: log, signal });
+    const html = await readFile(d.demoIndex, 'utf8');
+    if (!/id="yoink-tweaks"/.test(html) || !/__yoink\.tweaks/.test(html)) throw new Error('demo 里没找到 tweaks 约定的 style 块或清单');
+    return lib.readMeta(id);
+  });
+}
+
+/** Persist tweak values into the <style id="yoink-tweaks"> block of demo/index.html. */
+async function applyTweaks(id: string, values: Record<string, string>) {
+  const d = await lib.getPattern(id);
+  if (!d.demoIndex) throw new Error('还没有 demo');
+  let html = await readFile(d.demoIndex, 'utf8');
+  const m = html.match(/(<style id="yoink-tweaks">)([\s\S]*?)(<\/style>)/);
+  if (!m) throw new Error('demo 里没有 yoink-tweaks style 块，先抽取 tweaks');
+  let block = m[2];
+  for (const [k, v] of Object.entries(values)) {
+    const re = new RegExp('(' + k.replace(/[-]/g, '\\-') + '\\s*:\\s*)[^;]+(;)');
+    block = re.test(block) ? block.replace(re, `$1${v}$2`) : block.replace(/}\s*$/, `  ${k}: ${v};\n}`);
+  }
+  html = html.replace(m[0], m[1] + block + m[3]);
+  await writeFile(d.demoIndex, html);
+}
+
 async function stepSkill(jobId: string, id: string): Promise<PatternMeta> {
   return runJob(jobId, id, 'skill', async (log, signal) => {
     const d = await lib.getPattern(id);
@@ -282,6 +310,8 @@ ipcMain.handle('pipeline:demo', (_e, jobId: string, id: string) => stepDemo(jobI
 ipcMain.handle('pipeline:screenshot', (_e, jobId: string, id: string, compare: boolean) => stepScreenshot(jobId, id, compare));
 ipcMain.handle('pipeline:feedback', (_e, jobId: string, id: string, fb: string) => stepFeedback(jobId, id, fb));
 ipcMain.handle('pipeline:confirmDemo', (_e, jobId: string, id: string) => stepConsolidate(jobId, id));
+ipcMain.handle('pipeline:tweaks', (_e, jobId: string, id: string) => stepTweaks(jobId, id));
+ipcMain.handle('demo:applyTweaks', (_e, id: string, values: Record<string, string>) => applyTweaks(id, values));
 ipcMain.handle('pipeline:skill', (_e, jobId: string, id: string) => stepSkill(jobId, id));
 ipcMain.handle('pipeline:packSkill', (_e, id: string) => lib.setStatus(id, 'skill_ready'));
 ipcMain.handle('pipeline:cancel', (_e, jobId: string) => { aborts.get(jobId)?.abort(); });

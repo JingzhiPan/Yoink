@@ -29,6 +29,8 @@ interface State {
   screenshot(id: string, compare: boolean): Promise<void>;
   feedback(id: string, text: string): Promise<void>;
   confirmDemo(id: string): Promise<void>;
+  extractTweaks(id: string): Promise<void>;
+  applyTweaks(id: string, values: Record<string, string>): Promise<void>;
   generateSkill(id: string): Promise<void>;
   packSkill(id: string): Promise<void>;
   updateMeta(id: string, patch: Partial<PatternMeta>): Promise<void>;
@@ -110,6 +112,8 @@ export const useStore = create<State>((set, get) => {
     screenshot: (id, compare) => wrap(id, 'screenshot', (j) => api.screenshotDemo(j, id, compare)),
     feedback: (id, text) => wrap(id, 'feedback', (j) => api.sendFeedback(j, id, text)),
     confirmDemo: (id) => wrap(id, 'consolidate', (j) => api.confirmDemo(j, id)),
+    extractTweaks: (id) => wrap(id, 'tweaks', (j) => api.extractTweaks(j, id)),
+    async applyTweaks(id, values) { await api.applyTweaks(id, values); await afterStep(id); },
     generateSkill: (id) => wrap(id, 'skill', (j) => api.generateSkill(j, id)),
     async packSkill(id) { await api.packSkill(id); await afterStep(id); },
     async updateMeta(id, patch) { await api.updateMeta(id, patch); await afterStep(id); },
