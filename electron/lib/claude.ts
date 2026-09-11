@@ -9,6 +9,8 @@ export interface ClaudeRunOpts {
   onLog?: (line: string) => void;
   signal?: AbortSignal;
   model?: string;
+  /** extra CLI flags, e.g. ['--chrome'] */
+  extraArgs?: string[];
 }
 
 const running = new Map<string, ChildProcess>();
@@ -26,6 +28,7 @@ export async function runClaude(opts: ClaudeRunOpts): Promise<string> {
     '--allowedTools', ...opts.allowedTools,
   ];
   if (opts.model) args.push('--model', opts.model);
+  if (opts.extraArgs) args.push(...opts.extraArgs);
 
   return new Promise((resolve, reject) => {
     const p = spawn(claude, args, { cwd: opts.cwd, env: shellEnv(), stdio: ['ignore', 'pipe', 'pipe'] });

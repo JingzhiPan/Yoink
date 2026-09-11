@@ -26,12 +26,12 @@ export function SpecTab({ d }: { d: PatternDetail }) {
             <h3>① 粘贴 spec</h3>
             <div className="callout">
               把视频丢给 ChatGPT（或任何能看视频的工具），让它写一份交互 spec，然后把文字粘到下面。格式随意，俺会自动整理。
-              {settings?.inputMethod === 'api' && <div className="hint" style={{ marginTop: 6 }}>你选的是 API 模式，但这条还没解析。可以直接粘贴，或者点右边重跑。</div>}
+              {settings?.inputMethod !== 'manual' && <div className="hint" style={{ marginTop: 6 }}>这条还没自动解析。可以直接粘贴，或者点右边重跑。</div>}
             </div>
             <textarea className="mono" style={{ minHeight: 220 }} placeholder="# Liquid Gooey Effect&#10;&#10;When the user hovers…" value={raw} onChange={(e) => setRaw(e.target.value)} />
             <div className="row">
               <button className="primary" disabled={!raw.trim() || running} onClick={async () => { await storeRaw(id, raw); setRaw(''); }}>存为原始 spec</button>
-              {settings?.inputMethod === 'api' && <ApiParseButton id={id} disabled={running} />}
+              {(settings?.inputMethod === 'api' || settings?.inputMethod === 'computer_use') && <ApiParseButton id={id} method={settings.inputMethod} disabled={running} />}
             </div>
           </>
         )}
@@ -70,13 +70,13 @@ export function SpecTab({ d }: { d: PatternDetail }) {
   );
 }
 
-function ApiParseButton({ id, disabled }: { id: string; disabled: boolean }) {
+function ApiParseButton({ id, method, disabled }: { id: string; method: 'api' | 'computer_use'; disabled: boolean }) {
   const run = async () => {
     const st = useStore.getState();
     const jobId = Math.random().toString(36).slice(2, 10);
     useStore.setState((s) => ({ jobs: { ...s.jobs, [jobId]: { jobId, patternId: id, kind: 'parse', logs: [], status: 'running', startedAt: Date.now() } } }));
-    try { await window.yoink.parseAuto(jobId, id, 'api'); } catch { /* shown in log */ }
+    try { await window.yoink.parseAuto(jobId, id, method); } catch { /* shown in log */ }
     await st.refreshList(); await st.reloadCurrent();
   };
-  return <button disabled={disabled} onClick={run}>用 OpenAI 自动解析</button>;
+  return <button disabled={disabled} onClick={run}>{method === 'api' ? '用 OpenAI 自动解析' : '让 Claude 去 ChatGPT 解析'}</button>;
 }

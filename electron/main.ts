@@ -7,7 +7,7 @@ import { LIBRARY_ROOT, binary } from './lib/paths.js';
 import { extractFrames } from './lib/ffmpeg.js';
 import { runClaude, extractJson } from './lib/claude.js';
 import { parseSpec, slugify } from './lib/parser.js';
-import { verifyPrompt, demoPrompt, feedbackPrompt, comparePrompt, skillPrompt } from './lib/prompts.js';
+import { verifyPrompt, demoPrompt, feedbackPrompt, comparePrompt, skillPrompt, computerUsePrompt } from './lib/prompts.js';
 import { screenshotDemo } from './lib/screenshot.js';
 import { parseWithOpenAI } from './lib/openai.js';
 import * as lib from './lib/library.js';
@@ -173,7 +173,7 @@ async function stepSkill(jobId: string, id: string): Promise<PatternMeta> {
 }
 
 async function stepParseAuto(jobId: string, id: string, method: InputMethod): Promise<PatternMeta> {
-  return runJob(jobId, id, 'parse', async (log) => {
+  return runJob(jobId, id, 'parse', async (log, signal) => {
     const d = await lib.getPattern(id);
     if (method === 'api') {
       const key = getOpenAIKey();
@@ -181,7 +181,17 @@ async function stepParseAuto(jobId: string, id: string, method: InputMethod): Pr
       const text = await parseWithOpenAI(key, d.frames, d.meta.video_duration_sec, log);
       return stepStoreRaw(id, text, 'api');
     }
-    throw new Error('Computer Use 模式还没做好，先用 API 或手动模式');
+    // computer_use: Claude Code + Chrome extension drives the user's logged-in ChatGPT tab
+    log('Claude Code 正在通过 Chrome 操作 ChatGPT…');
+    const out = await runClaude({
+      prompt: computerUsePrompt(d.videoPath!, d.meta.video_duration_sec), cwd: d.dir,
+      allowedTools: ['mcp__claude-in-chrome__*'], extraArgs: ['--chrome'], onLog: log, signal,
+    });
+    if (/NOT_LOGGED_IN/.test(out)) throw new Error('Chrome 里的 ChatGPT 没登录，先登录再试');
+    if (/VIDEO_NOT_ACCEPTED/.test(out)) throw new Error('ChatGPT 网页不接受这个视频文件');
+    const md = out.match(/```(?:markdown|md)?\s*([\s\S]*?)```/i)?.[1]?.trim() ?? out.trim();
+    if (md.length < 200) throw new Error('从 ChatGPT 刮回来的内容太短：\n' + out.slice(0, 300));
+    return stepStoreRaw(id, md, 'computer_use');
   });
 }
 

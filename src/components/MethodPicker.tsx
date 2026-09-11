@@ -17,8 +17,8 @@ export function MethodPicker({ onClose }: { onClose?: () => void }) {
           <button className={`method-card ${method === 'api' ? 'on' : ''}`} onClick={() => setMethod('api')}>
             <b>① API 模式</b><small>填一次 OpenAI API key，之后拖视频全自动。最稳最快，几块钱一个月。</small>
           </button>
-          <button className="method-card off" disabled title="还没做好">
-            <b>② Computer Use</b><small>用你登录好的 ChatGPT 网页自动处理。（开发中）</small>
+          <button className={`method-card ${method === 'computer_use' ? 'on' : ''}`} onClick={() => setMethod('computer_use')}>
+            <b>② Computer Use</b><small>Claude Code 带着 Chrome 插件，去你登录好的 ChatGPT 网页传视频、要 spec。白嫖订阅额度。</small>
           </button>
           <button className={`method-card ${method === 'manual' ? 'on' : ''}`} onClick={() => setMethod('manual')}>
             <b>③ 手动模式</b><small>你自己去 ChatGPT 处理视频，把 spec 文字粘进来。什么都不依赖。</small>

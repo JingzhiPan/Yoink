@@ -123,3 +123,19 @@ SPEC`;
 }
 
 function path_basename(p: string) { return p.split('/').pop() ?? p; }
+
+export function computerUsePrompt(videoPath: string, durationSec: number): string {
+  return `你有 Claude in Chrome 浏览器工具。任务：用用户已登录的 ChatGPT 网页，让它看一段 UI 交互演示视频并写出实现 spec，然后把 ChatGPT 的完整回答原样带回来。
+
+步骤：
+1. 用 tabs_create 新开标签页，navigate 到 https://chatgpt.com/ 。如果页面要求登录，直接停止并回复 "NOT_LOGGED_IN"。
+2. 找到输入框旁的附件/上传按钮，用 file_upload 工具上传本地文件：${videoPath}
+   （视频 ${durationSec.toFixed(1)} 秒）。等缩略图出现、上传进度完成。如果站点拒绝视频文件，停止并回复 "VIDEO_NOT_ACCEPTED"。
+3. 在输入框粘贴下面这段 prompt（原样，不要改），发送：
+<<<PROMPT
+Watch this UI interaction demo video carefully and write an implementation spec for a front-end engineer. Only describe what is visible. Structure it exactly as:
+${SPEC_FORMAT_HINT}
+PROMPT
+4. 等 ChatGPT 生成完毕（停止按钮消失、文字不再变化，最多等 3 分钟）。用 get_page_text 或 read_page 把最后一条助手回复完整读出来。
+5. 最终只输出 ChatGPT 的回答正文，用 \`\`\`markdown 围栏包裹，不加任何你自己的评论。`;
+}

@@ -86,8 +86,8 @@ export const useStore = create<State>((set, get) => {
         set((s) => ({ jobs: { ...s.jobs, [jobId]: { ...s.jobs[jobId], patternId: meta.id } } }));
         await get().refreshList();
         const method = get().settings?.inputMethod;
-        if (method === 'api') {
-          await wrap(meta.id, 'parse', (j) => api.parseAuto(j, meta.id, 'api'));
+        if (method === 'api' || method === 'computer_use') {
+          await wrap(meta.id, 'parse', (j) => api.parseAuto(j, meta.id, method));
           const m2 = get().patterns.find((x) => x.id === meta.id);
           if (m2?.status === 'raw_spec') await get().verify(meta.id);
         }
