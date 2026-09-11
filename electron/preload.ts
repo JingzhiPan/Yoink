@@ -34,6 +34,11 @@ const api = {
   },
 
   selectVideos: (): Promise<string[]> => ipcRenderer.invoke('files:selectVideos'),
+  onOpenFiles: (cb: (paths: string[]) => void): (() => void) => {
+    const h = (_e: unknown, paths: string[]) => cb(paths);
+    ipcRenderer.on('open:files', h);
+    return () => ipcRenderer.off('open:files', h);
+  },
   showInFinder: (p: string): Promise<void> => ipcRenderer.invoke('shell:showInFinder', p),
   openExternal: (u: string): Promise<void> => ipcRenderer.invoke('shell:openExternal', u),
   mcpInfo: (): Promise<{ serverPath: string; libraryRoot: string; nodePath: string }> => ipcRenderer.invoke('mcp:info'),

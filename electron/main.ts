@@ -51,6 +51,19 @@ function settings(): Settings {
 
 // ─── jobs ──────────────────────────────────────────────────────────
 let mainWin: BrowserWindow | null = null;
+// Files dropped on the Dock icon (or opened via Finder) before the window exists are queued.
+const pendingOpens: string[] = [];
+function deliverOpens() {
+  if (!mainWin || pendingOpens.length === 0) return;
+  const paths = pendingOpens.splice(0);
+  mainWin.webContents.send('open:files', paths);
+  mainWin.show(); mainWin.focus();
+}
+app.on('open-file', (e, filePath) => {
+  e.preventDefault();
+  if (/\.(mp4|mov|webm|m4v|gif|mkv)$/i.test(filePath)) pendingOpens.push(filePath);
+  if (app.isReady()) { if (!mainWin) createWindow(); else deliverOpens(); }
+});
 const aborts = new Map<string, AbortController>();
 function emit(ev: JobEvent) { mainWin?.webContents.send('job:event', ev); }
 function jobLogger(jobId: string, patternId: string, kind: JobKind) {
@@ -287,6 +300,7 @@ function createWindow() {
   if (isDev) mainWin.loadURL(DEV_URL);
   else mainWin.loadFile(path.join(APP_ROOT, 'dist', 'index.html'));
   mainWin.on('closed', () => (mainWin = null));
+  mainWin.webContents.on('did-finish-load', () => setTimeout(deliverOpens, 300));
 }
 
 app.whenReady().then(async () => {

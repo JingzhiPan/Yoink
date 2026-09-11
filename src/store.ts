@@ -61,6 +61,7 @@ export const useStore = create<State>((set, get) => {
       set({ settings });
       await get().refreshList();
       api.onJobEvent((ev) => get().handleJobEvent(ev));
+      api.onOpenFiles((paths) => get().importVideos(paths));
     },
     async refreshList() { set({ patterns: await api.listPatterns() }); },
     async open(id) { set({ current: await api.getPattern(id), view: { kind: 'pattern', id } }); },
