@@ -27,7 +27,7 @@ export async function probeDuration(video: string): Promise<number> {
   return Number.isFinite(n) ? n : 0;
 }
 
-const MAX_FRAMES = 24;
+const MAX_FRAMES = 30;
 const MIN_FRAMES = 6;
 const SCALE = 'scale=min(1280\\,iw):-2';
 
@@ -60,7 +60,8 @@ export async function extractFrames(
 
   if (count < MIN_FRAMES) {
     // Pass 2: evenly spaced
-    const target = 12;
+    // ~1.2 frames per second for long clips so no scene gets skipped; 12 minimum, 30 cap
+    const target = Math.min(30, Math.max(12, Math.round(duration * 1.2)));
     const fps = duration > 0 ? target / duration : 1;
     log(`帧数太少，改为均匀抽 ${target} 帧`);
     await rm(outDir, { recursive: true, force: true });

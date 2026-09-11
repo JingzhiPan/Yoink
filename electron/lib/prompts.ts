@@ -3,10 +3,13 @@ import type { PatternMeta } from '../../shared/types.js';
 export const SPEC_FORMAT_HINT = `统一 spec 格式（Markdown）：
 # <Pattern name in English>
 ## Overview — 一段话讲这个效果是什么、给人什么感觉
+## Core Principle — 设计意图。像一个懂工程的设计师给 coding agent 讲：所有表现背后的那一条生成规则是什么（例如"距离决定两个实体之间是否长出液桥"），它应该被抽象成什么可复用的 primitive（组件/参数/状态），做对了"手感"是什么、做错了会露馅在哪。这是这个效果的灵魂，别写成现象罗列。
+## Timeline — 按秒的事件序列（0.0s 初始态 → 0.4s 点击 → …），只写视频里真发生的
 ## Visual States — 列出所有可见状态（initial / hover / active / open / closing …），每个状态描述布局、颜色、形状、尺寸关系
 ## Interactions & Timing — 每个交互：触发条件 → 变化 → 时长/缓动/弹簧参数（能估就估，给数值）
 ## Technical Approach — 推荐实现方式（CSS / SVG filter / canvas / 动画库），关键技术点逐条说明
-## Tags — 逗号分隔的英文标签`;
+## Tags — 逗号分隔的英文标签
+（Core Principle 和 Timeline 靠看视频才写得出，帧核对时保留原文不删）`;
 
 export function verifyPrompt(meta: PatternMeta, rawSpec: string, frames: string[]): string {
   return `你是 UI 交互效果的技术审阅者。有一段 UI 演示视频，已抽出 ${frames.length} 张关键帧（按时间顺序），另有一份由其他模型（可能是 GPT）看视频写出的原始 spec。你的任务是"交叉核对"：用 Read 工具逐张查看帧图，然后逐条校验原始 spec。
@@ -17,6 +20,7 @@ export function verifyPrompt(meta: PatternMeta, rawSpec: string, frames: string[
 3. 技术方案描述含糊或和画面不符（比如画面明显是 SVG 滤镜融合效果却写成了 CSS transition）→ 根据帧修正。
 4. 保留原 spec 中合理的时间/缓动估计；帧序列能佐证的加以确认，不能佐证的标注"(估计)"。
 5. 不要凭空脑补新功能。拿不准就写"帧中不可判断"。
+6. 原始 spec 的 "Core Principle" 和 "Timeline" 两节是看完整视频才写得出的设计意图和时序，帧无法核对；原样保留（可以修错字，不要删减、不要改判）。如果原始 spec 没有这两节，就根据你从帧里理解到的写一版，并标注"(由帧推断)"。
 
 关键帧路径（请全部 Read）：
 ${frames.map((f, i) => `${i + 1}. ${f}`).join('\n')}
@@ -131,6 +135,8 @@ Rules:
 - Describe every ELEMENT you can see and how each one behaves over time.
 - Then list BOUNDARY MOMENTS explicitly, one bullet each: what happens when two elements meet or overlap, when a value reaches its minimum or maximum, when something appears from nothing or disappears completely, when the pointer enters/leaves/presses. These moments are where the craft is; do not skip them even if they last a fraction of a second.
 - Only describe what is visible. If you are unsure, say "unclear from video".
+- In "Core Principle", think like a designer who can code: name the single rule that generates every behavior in the video, the reusable primitive it should become (component + its parameters), and what the feel is — the thing a coding agent would get wrong if it only copied the surface. This section is the soul of the spec; do not skip it or reduce it to a summary.
+- In "Timeline", list real events with approximate timestamps, since you can see the video and later reviewers only see stills.
 
 Structure it exactly as:
 ${SPEC_FORMAT_HINT}
