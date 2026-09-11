@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
-import type { PatternMeta, PatternDetail, Settings, JobEvent, InputMethod } from '../shared/types.js';
+import type { PatternMeta, PatternDetail, Settings, JobEvent, InputMethod, DemoVariant } from '../shared/types.js';
 
 const api = {
   getSettings: (): Promise<Settings> => ipcRenderer.invoke('settings:get'),
@@ -10,6 +10,10 @@ const api = {
   getPattern: (id: string): Promise<PatternDetail> => ipcRenderer.invoke('pattern:get', id),
   updateMeta: (id: string, patch: Partial<PatternMeta>): Promise<PatternMeta> => ipcRenderer.invoke('pattern:updateMeta', id, patch),
   deletePattern: (id: string): Promise<void> => ipcRenderer.invoke('pattern:delete', id),
+  saveVariant: (id: string, name: string, note?: string): Promise<DemoVariant[]> => ipcRenderer.invoke('variant:save', id, name, note),
+  restoreVariant: (id: string, slug: string): Promise<void> => ipcRenderer.invoke('variant:restore', id, slug),
+  deleteVariant: (id: string, slug: string): Promise<void> => ipcRenderer.invoke('variant:delete', id, slug),
+  forkPattern: (id: string, name: string, fromVariant?: string): Promise<PatternMeta> => ipcRenderer.invoke('pattern:fork', id, name, fromVariant),
   refreshCover: (id: string): Promise<PatternDetail> => ipcRenderer.invoke('pattern:refreshCover', id),
   renamePattern: (id: string, newId: string): Promise<string> => ipcRenderer.invoke('pattern:rename', id, newId),
   saveSpec: (id: string, md: string): Promise<PatternMeta> => ipcRenderer.invoke('pattern:saveSpec', id, md),

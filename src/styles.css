@@ -194,3 +194,11 @@ a { color: var(--terra); }
 .card .menu button { background: transparent; border: 0; text-align: left; padding: 7px 10px; border-radius: 6px; font-size: 13px; }
 .card .menu button:hover { background: var(--line-soft); }
 .panel .cover img { object-fit: cover; }
+
+.variants { margin-top: 2px; }
+.variant-list { display: flex; flex-direction: column; gap: 4px; }
+.variant { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); font-size: 13px; }
+.variant.on { border-color: var(--terra); background: var(--peach); }
+.variant .vname { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
+.variant .hint { font-family: var(--mono); font-size: 11px; }
+.variant-list .callout { display: flex; align-items: center; gap: 8px; padding: 6px 10px; }

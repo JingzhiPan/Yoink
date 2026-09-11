@@ -51,7 +51,10 @@ export interface PatternDetail {
   skillMd: string | null;
   skillFiles: string[];        // relative paths inside skill/
   feedbackLog: string | null;  // demo-feedback.md
+  variants: DemoVariant[];     // saved demo snapshots under variants/
 }
+
+export interface DemoVariant { slug: string; name: string; created: string; note: string; index: string; }
 
 export interface Settings {
   inputMethod: InputMethod | null;

@@ -36,6 +36,10 @@ interface State {
   saveSkillMd(id: string, md: string): Promise<void>;
   deletePattern(id: string): Promise<void>;
   refreshCover(id: string): Promise<void>;
+  saveVariant(id: string, name: string): Promise<void>;
+  restoreVariant(id: string, slug: string): Promise<void>;
+  deleteVariant(id: string, slug: string): Promise<void>;
+  forkPattern(id: string, name: string, fromVariant?: string): Promise<void>;
 }
 
 export const useStore = create<State>((set, get) => {
@@ -111,6 +115,10 @@ export const useStore = create<State>((set, get) => {
     async updateMeta(id, patch) { await api.updateMeta(id, patch); await afterStep(id); },
     async saveSpec(id, md) { await api.saveSpec(id, md); await afterStep(id); },
     async saveSkillMd(id, md) { await api.saveSkillMd(id, md); await afterStep(id); },
+    async saveVariant(id, name) { await api.saveVariant(id, name); await afterStep(id); },
+    async restoreVariant(id, slug) { await api.restoreVariant(id, slug); await afterStep(id); },
+    async deleteVariant(id, slug) { await api.deleteVariant(id, slug); await afterStep(id); },
+    async forkPattern(id, name, fromVariant) { const m = await api.forkPattern(id, name, fromVariant); await get().refreshList(); await get().open(m.id); },
     async refreshCover(id) { await api.refreshCover(id); await afterStep(id); },
     async deletePattern(id) { await api.deletePattern(id); get().goHome(); await get().refreshList(); },
   };

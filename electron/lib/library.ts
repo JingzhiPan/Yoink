@@ -2,7 +2,7 @@ import { mkdir, readdir, readFile, writeFile, copyFile, stat, rm } from 'node:fs
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { LIBRARY_ROOT } from './paths.js';
-import type { PatternMeta, PatternDetail, PatternStatus } from '../../shared/types.js';
+import type { PatternMeta, PatternDetail, PatternStatus, DemoVariant } from '../../shared/types.js';
 
 export function patternDir(id: string) { return path.join(LIBRARY_ROOT, id); }
 
@@ -80,6 +80,7 @@ export async function getPattern(id: string): Promise<PatternDetail> {
     skillMd: await readOpt(path.join(dir, 'skill', 'SKILL.md')),
     skillFiles: await walk(path.join(dir, 'skill')),
     feedbackLog: await readOpt(path.join(dir, 'demo-feedback.md')),
+    variants: await listVariants(dir),
   };
 }
 
@@ -121,3 +122,62 @@ export async function appendText(id: string, rel: string, content: string) {
   await writeFile(p, (prev ?? '') + content);
 }
 export async function fileSize(p: string) { try { return (await stat(p)).size; } catch { return 0; } }
+
+// ─── demo variants ──────────────────────────────────────────────
+async function listVariants(dir: string): Promise<DemoVariant[]> {
+  const vd = path.join(dir, 'variants');
+  if (!existsSync(vd)) return [];
+  const out: DemoVariant[] = [];
+  for (const e of await readdir(vd, { withFileTypes: true })) {
+    if (!e.isDirectory()) continue;
+    const idx = path.join(vd, e.name, 'index.html');
+    if (!existsSync(idx)) continue;
+    let m: any = {};
+    try { m = JSON.parse(await readFile(path.join(vd, e.name, 'variant.json'), 'utf8')); } catch { /* */ }
+    out.push({ slug: e.name, name: m.name ?? e.name, created: m.created ?? '', note: m.note ?? '', index: idx });
+  }
+  return out.sort((a, b) => (a.created < b.created ? 1 : -1));
+}
+export async function saveVariant(id: string, name: string, note = ''): Promise<DemoVariant[]> {
+  const dir = patternDir(id);
+  const { cp } = await import('node:fs/promises');
+  let slug = name.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'variant';
+  slug = `${new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '')}-${slug}`;
+  const vd = path.join(dir, 'variants', slug);
+  await mkdir(vd, { recursive: true });
+  await cp(path.join(dir, 'demo'), vd, { recursive: true });
+  await writeFile(path.join(vd, 'variant.json'), JSON.stringify({ name, note, created: new Date().toISOString() }, null, 2));
+  return listVariants(dir);
+}
+export async function restoreVariant(id: string, slug: string): Promise<void> {
+  const dir = patternDir(id);
+  const { cp } = await import('node:fs/promises');
+  const vd = path.join(dir, 'variants', slug);
+  if (!existsSync(path.join(vd, 'index.html'))) throw new Error('方案不存在');
+  await rm(path.join(dir, 'demo'), { recursive: true, force: true });
+  await cp(vd, path.join(dir, 'demo'), { recursive: true });
+  await rm(path.join(dir, 'demo', 'variant.json'), { force: true });
+  await rm(path.join(dir, 'demo-screenshots'), { recursive: true, force: true });
+  await rm(path.join(dir, 'demo-compare.md'), { force: true });
+}
+export async function deleteVariant(id: string, slug: string): Promise<void> {
+  await rm(path.join(patternDir(id), 'variants', slug), { recursive: true, force: true });
+}
+/** Branch the whole pattern into a new folder; optionally start it from a saved variant. */
+export async function forkPattern(id: string, newName: string, fromVariant?: string): Promise<PatternMeta> {
+  const { cp } = await import('node:fs/promises');
+  const src = patternDir(id);
+  let newId = newName.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48);
+  if (newId.length < 3) newId = `${id}-fork`;
+  let finalId = newId; let n = 2;
+  while (existsSync(patternDir(finalId))) finalId = `${newId}-${n++}`;
+  const dst = patternDir(finalId);
+  await cp(src, dst, { recursive: true, filter: (p) => !/\/(variants|skill|demo-screenshots)(\/|$)/.test(p) && !/demo-compare\.md$/.test(p) });
+  if (fromVariant) {
+    await rm(path.join(dst, 'demo'), { recursive: true, force: true });
+    await cp(path.join(src, 'variants', fromVariant), path.join(dst, 'demo'), { recursive: true });
+    await rm(path.join(dst, 'demo', 'variant.json'), { force: true });
+  }
+  const meta = await readMeta(finalId);
+  return updateMeta(finalId, { id: finalId, name: newName, status: 'demo_wip', favorite: false, demo_screenshot_count: 0, notes: `分支自 ${id}${fromVariant ? ' / ' + fromVariant : ''}`, created: new Date().toISOString().slice(0, 10) });
+}

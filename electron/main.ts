@@ -257,6 +257,10 @@ ipcMain.handle('library:list', () => lib.listPatterns());
 ipcMain.handle('pattern:get', (_e, id: string) => lib.getPattern(id));
 ipcMain.handle('pattern:updateMeta', (_e, id: string, patch: Partial<PatternMeta>) => lib.updateMeta(id, patch));
 ipcMain.handle('pattern:delete', (_e, id: string) => lib.deletePattern(id));
+ipcMain.handle('variant:save', (_e, id: string, name: string, note?: string) => lib.saveVariant(id, name, note));
+ipcMain.handle('variant:restore', (_e, id: string, slug: string) => lib.restoreVariant(id, slug));
+ipcMain.handle('variant:delete', (_e, id: string, slug: string) => lib.deleteVariant(id, slug));
+ipcMain.handle('pattern:fork', (_e, id: string, name: string, fromVariant?: string) => lib.forkPattern(id, name, fromVariant));
 ipcMain.handle('pattern:refreshCover', async (_e, id: string) => {
   const d = await lib.getPattern(id);
   if (d.demoIndex && d.demoScreenshots.length === 0) {
