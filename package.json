@@ -1,0 +1,34 @@
+{
+  "name": "yoink",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "electron/dist/electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "electron:build": "tsc -p electron",
+    "electron:start": "wait-on tcp:5173 && ./scripts/electron-dev.sh",
+    "electron:dev": "npm run electron:build && concurrently -k -n vite,electron -c yellow,cyan \"npm run dev\" \"npm run electron:start\"",
+    "start": "npm run electron:dev",
+    "mcp": "node mcp/server.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.20.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "zod": "^3.25.0",
+    "zustand": "^5.0.13"
+  },
+  "devDependencies": {
+    "@types/node": "^24.12.3",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "concurrently": "^9.2.1",
+    "electron": "^42.2.0",
+    "typescript": "~6.0.2",
+    "vite": "^8.0.12",
+    "wait-on": "^9.0.10"
+  }
+}
