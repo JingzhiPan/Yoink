@@ -211,12 +211,14 @@ async function stepConsolidate(jobId: string, id: string): Promise<PatternMeta> 
   });
 }
 
-async function stepTweaks(jobId: string, id: string): Promise<PatternMeta> {
+async function stepTweaks(jobId: string, id: string, focus = ''): Promise<PatternMeta> {
   return runJob(jobId, id, 'tweaks', async (log, signal) => {
     const d = await lib.getPattern(id);
     if (!d.demoIndex) throw new Error('还没有 demo');
-    log('Claude Code 正在把 demo 的参数抽成 tweaks…');
-    await runClaude({ prompt: tweaksPrompt(), cwd: d.dir, allowedTools: ['Read', 'Write', 'Edit'], onLog: log, signal });
+    const craft = d.spec?.match(/## Craft Details([\s\S]*?)(\n## |$)/)?.[1] ?? '';
+    log(focus ? `Claude Code 正在按「${focus}」抽取 tweaks…` : 'Claude Code 正在把 demo 的参数抽成 tweaks…');
+    await runClaude({ prompt: tweaksPrompt(focus, d.feedbackLog ?? '', craft), cwd: d.dir, allowedTools: ['Read', 'Write', 'Edit'], onLog: log, signal });
+    await lib.updateMeta(id, { hidden_tweaks: [] });
     const html = await readFile(d.demoIndex, 'utf8');
     if (!/id="yoink-tweaks"/.test(html) || !/__yoink\.tweaks/.test(html)) throw new Error('demo 里没找到 tweaks 约定的 style 块或清单');
     return lib.readMeta(id);
@@ -321,7 +323,7 @@ ipcMain.handle('pipeline:demo', (_e, jobId: string, id: string) => stepDemo(jobI
 ipcMain.handle('pipeline:screenshot', (_e, jobId: string, id: string, compare: boolean) => stepScreenshot(jobId, id, compare));
 ipcMain.handle('pipeline:feedback', (_e, jobId: string, id: string, fb: string) => stepFeedback(jobId, id, fb));
 ipcMain.handle('pipeline:confirmDemo', (_e, jobId: string, id: string) => stepConsolidate(jobId, id));
-ipcMain.handle('pipeline:tweaks', (_e, jobId: string, id: string) => stepTweaks(jobId, id));
+ipcMain.handle('pipeline:tweaks', (_e, jobId: string, id: string, focus?: string) => stepTweaks(jobId, id, focus ?? ''));
 ipcMain.handle('demo:applyTweaks', (_e, id: string, values: Record<string, string>) => applyTweaks(id, values));
 ipcMain.handle('pipeline:skill', (_e, jobId: string, id: string) => stepSkill(jobId, id));
 ipcMain.handle('pipeline:packSkill', (_e, id: string) => lib.setStatus(id, 'skill_ready'));

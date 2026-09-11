@@ -193,13 +193,21 @@ ${feedback || '（无）'}
 FEEDBACK`;
 }
 
-export function tweaksPrompt(): string {
+export function tweaksPrompt(focus: string, feedback: string, craft: string): string {
   return `当前目录下 demo/index.html 是一个 UI 交互 demo。请用 Read 读取它，然后用 Edit 把它重构成符合下面 Tweaks 约定的版本（行为和外观保持完全一致，只是把硬编码的参数抽成变量）：
 
 ${DEMO_CONVENTION}
 
+选参数的优先级（这是最重要的部分，别抽一堆用户不关心的东西）：
+1. 用户点名想调的：${focus.trim() ? focus.trim() : '（没有点名）'}
+2. 用户在反馈里纠正过的行为所涉及的参数——他们已经证明自己在乎这些：
+${feedback.trim() ? feedback.slice(0, 2500) : '（无反馈记录）'}
+3. spec 里 Craft Details 提到的细节：
+${craft.trim() ? craft.slice(0, 1500) : '（无）'}
+4. 一眼能看出差别的手感参数：核心动画时长、缓动/弹簧刚度与阻尼、触发阈值/距离、关键的幅度（位移/缩放倍率）。
+不要抽：纯装饰的颜色、边框/阴影细节、字号、内边距、容器尺寸——除非用户点名。总数 4–10 个，宁少勿多，按重要性排序，label 用中文写清楚这个参数影响什么。
+
 要求：
-- 挑最影响手感和观感的 6–14 个参数：动画时长、缓动/弹簧参数、关键颜色、关键尺寸、阈值。
 - CSS 里所有用到这些参数的地方改为 var(--x)；JS 里改为现读 tweak("--x")（时长要 parseFloat）。
 - 保持 window.__yoink.states 不变。
 - 改完只回复一行：抽出了哪些 key。`;

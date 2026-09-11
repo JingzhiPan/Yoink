@@ -33,6 +33,7 @@ export interface PatternMeta {
   created: string;
   notes: string;
   favorite?: boolean;
+  hidden_tweaks?: string[];   // tweak keys the user hid from the panel
 }
 
 /** Everything the renderer needs to show a pattern. */

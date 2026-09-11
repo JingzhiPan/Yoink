@@ -40,7 +40,7 @@ export function DemoTab({ d }: { d: PatternDetail }) {
               {done && <span className="status" style={{ ['--sc' as string]: 'var(--s-done)' }}>已确认</span>}
             </div>
             <ScaledFrame src={api.fileUrl(preview ?? d.demoIndex) + '?r=' + reloadKey} onFrame={setFrameEl} />
-            {!preview && <TweaksPanel iframe={frameEl} patternId={id} running={running} loadKey={reloadKey} onReload={() => setReloadKey((k) => k + 1)} />}
+            {!preview && <TweaksPanel iframe={frameEl} patternId={id} running={running} loadKey={reloadKey} onReload={() => setReloadKey((k) => k + 1)} hidden={d.meta.hidden_tweaks ?? []} />}
             {preview && (() => { const v = d.variants.find((x) => x.index === preview); return v ? (
               <div className="callout variant-bar">
                 正在预览方案「{v.name}」，当前 demo 未改动。<span className="spacer" />
