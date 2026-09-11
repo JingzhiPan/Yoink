@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { PatternMeta, PatternDetail, Settings, JobEvent, JobKind, InputMethod } from '../shared/types';
+import type { PatternMeta, PatternDetail, Settings, JobEvent, JobKind, InputMethod, PatternStatus, Category } from '../shared/types';
 import { api, newJobId } from './api';
 
 export interface Job { jobId: string; patternId: string; kind: JobKind; logs: string[]; status: 'running' | 'done' | 'error'; error?: string; startedAt: number }
@@ -11,6 +11,8 @@ interface State {
   jobs: Record<string, Job>;
   view: { kind: 'home' } | { kind: 'pattern'; id: string };
   showMethodPicker: boolean;
+  filters: { status: PatternStatus | ''; cat: Category | ''; tag: string };
+  setFilters(p: Partial<State['filters']>): void;
 
   init(): Promise<void>;
   refreshList(): Promise<void>;
@@ -51,6 +53,8 @@ export const useStore = create<State>((set, get) => {
 
   return {
     settings: null, patterns: [], current: null, jobs: {}, view: { kind: 'home' }, showMethodPicker: false,
+    filters: { status: '', cat: '', tag: '' },
+    setFilters(p) { set((s) => ({ filters: { ...s.filters, ...p } })); },
 
     async init() {
       const settings = await api.getSettings();
