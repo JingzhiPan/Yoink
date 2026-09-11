@@ -8,6 +8,8 @@ interface State {
   settings: Settings | null;
   patterns: PatternMeta[];
   current: PatternDetail | null;
+  selected: PatternDetail | null;      // browse-mode read-only panel
+  previewVariant: string | null;       // variant index.html shown in the workspace instead of demo
   jobs: Record<string, Job>;
   view: { kind: 'home' } | { kind: 'pattern'; id: string };
   showMethodPicker: boolean;
@@ -17,6 +19,8 @@ interface State {
   init(): Promise<void>;
   refreshList(): Promise<void>;
   open(id: string): Promise<void>;
+  select(id: string | null): Promise<void>;
+  setPreviewVariant(index: string | null): void;
   goHome(): void;
   reloadCurrent(): Promise<void>;
   handleJobEvent(ev: JobEvent): void;
@@ -58,7 +62,7 @@ export const useStore = create<State>((set, get) => {
   };
 
   return {
-    settings: null, patterns: [], current: null, jobs: {}, view: { kind: 'home' }, showMethodPicker: false,
+    settings: null, patterns: [], current: null, selected: null, previewVariant: null, jobs: {}, view: { kind: 'home' }, showMethodPicker: false,
     filters: { status: '', cat: '', tag: '' },
     setFilters(p) { set((s) => ({ filters: { ...s.filters, ...p } })); },
 
@@ -70,9 +74,11 @@ export const useStore = create<State>((set, get) => {
       api.onOpenFiles((paths) => get().importVideos(paths));
     },
     async refreshList() { set({ patterns: await api.listPatterns() }); },
-    async open(id) { set({ current: await api.getPattern(id), view: { kind: 'pattern', id } }); },
-    goHome() { set({ view: { kind: 'home' }, current: null }); },
-    async reloadCurrent() { const c = get().current; if (c) set({ current: await api.getPattern(c.meta.id) }); },
+    async open(id) { const cur = get().current; set({ current: await api.getPattern(id), selected: null, view: { kind: 'pattern', id }, previewVariant: cur?.meta.id === id ? get().previewVariant : null }); },
+    async select(id) { set({ selected: id ? await api.getPattern(id) : null }); },
+    setPreviewVariant(index) { set({ previewVariant: index }); },
+    goHome() { set({ view: { kind: 'home' }, current: null, previewVariant: null }); },
+    async reloadCurrent() { const c = get().current; if (c) set({ current: await api.getPattern(c.meta.id) }); const sel = get().selected; if (sel) set({ selected: await api.getPattern(sel.meta.id) }); },
     handleJobEvent(ev) {
       set((s) => {
         const j = s.jobs[ev.jobId];
@@ -120,11 +126,11 @@ export const useStore = create<State>((set, get) => {
     async saveSpec(id, md) { await api.saveSpec(id, md); await afterStep(id); },
     async saveSkillMd(id, md) { await api.saveSkillMd(id, md); await afterStep(id); },
     async saveVariant(id, name) { await api.saveVariant(id, name); await afterStep(id); },
-    async restoreVariant(id, slug) { await api.restoreVariant(id, slug); await afterStep(id); },
-    async deleteVariant(id, slug) { await api.deleteVariant(id, slug); await afterStep(id); },
+    async restoreVariant(id, slug) { await api.restoreVariant(id, slug); set({ previewVariant: null }); await afterStep(id); },
+    async deleteVariant(id, slug) { await api.deleteVariant(id, slug); set({ previewVariant: null }); await afterStep(id); },
     async forkPattern(id, name, fromVariant) { const m = await api.forkPattern(id, name, fromVariant); await get().refreshList(); await get().open(m.id); },
     async refreshCover(id) { await api.refreshCover(id); await afterStep(id); },
-    async deletePattern(id) { await api.deletePattern(id); get().goHome(); await get().refreshList(); },
+    async deletePattern(id) { await api.deletePattern(id); if (get().current?.meta.id === id) get().goHome(); if (get().selected?.meta.id === id) set({ selected: null }); await get().refreshList(); },
   };
 });
 

@@ -8,8 +8,7 @@ import { NameDialog } from './NameDialog';
 import { TweaksPanel } from './TweaksPanel';
 
 export function DemoTab({ d }: { d: PatternDetail }) {
-  const { generateDemo, screenshot, feedback, confirmDemo, saveVariant, restoreVariant, deleteVariant, forkPattern } = useStore();
-  const [preview, setPreview] = useState<string | null>(null);
+  const { generateDemo, screenshot, feedback, confirmDemo, saveVariant, restoreVariant, deleteVariant, forkPattern, previewVariant: preview, setPreviewVariant: setPreview } = useStore();
   const [frameEl, setFrameEl] = useState<HTMLIFrameElement | null>(null);
   const [dialog, setDialog] = useState<{ title: string; initial: string; label: string; run: (v: string) => Promise<void> } | null>(null);
   const jobs = useStore((s) => s.jobs);
@@ -42,26 +41,19 @@ export function DemoTab({ d }: { d: PatternDetail }) {
             </div>
             <ScaledFrame src={api.fileUrl(preview ?? d.demoIndex) + '?r=' + reloadKey} onFrame={setFrameEl} />
             {!preview && <TweaksPanel iframe={frameEl} patternId={id} running={running} loadKey={reloadKey} onReload={() => setReloadKey((k) => k + 1)} />}
-            <div className="row variants">
-              <h3>方案 · {d.variants.length}</h3><span className="spacer" />
-              <button className="sm" disabled={running} onClick={() => setDialog({ title: '另存当前 demo 为方案', initial: `方案 ${d.variants.length + 1}`, label: '另存', run: (n) => saveVariant(id, n) })}>另存当前 demo</button>
+            {preview && (() => { const v = d.variants.find((x) => x.index === preview); return v ? (
+              <div className="callout variant-bar">
+                正在预览方案「{v.name}」，当前 demo 未改动。<span className="spacer" />
+                <button className="ghost sm" onClick={() => setPreview(null)}>回到当前 demo</button>
+                <button className="ghost sm" disabled={running} onClick={async () => { if (confirm(`用「${v.name}」覆盖当前 demo？建议先把当前 demo 另存。`)) { await restoreVariant(id, v.slug); setReloadKey((k) => k + 1); } }}>恢复为当前</button>
+                <button className="ghost sm" disabled={running} onClick={() => setDialog({ title: `从「${v.name}」分支成新 pattern`, initial: `${d.meta.name} · ${v.name}`, label: '分支', run: (n) => forkPattern(id, n, v.slug) })}>分支</button>
+                <button className="ghost sm danger" onClick={async () => { if (confirm(`删除方案「${v.name}」？`)) await deleteVariant(id, v.slug); }}>删</button>
+              </div>) : null; })()}
+            <div className="row">
+              <h3>调 demo</h3><span className="spacer" />
+              <button className="sm" disabled={running} onClick={() => setDialog({ title: '另存当前 demo 为方案', initial: `方案 ${d.variants.length + 1}`, label: '另存', run: (n) => saveVariant(id, n) })}>另存当前 demo 为方案</button>
               <button className="sm" disabled={running} onClick={() => setDialog({ title: '分支成新 pattern', initial: d.meta.name + ' (variant)', label: '分支', run: (n) => forkPattern(id, n) })}>分支成新 pattern</button>
             </div>
-            {d.variants.length > 0 && (
-              <div className="variant-list">
-                {preview && <div className="callout">正在预览方案，当前 demo 未改动。<button className="ghost sm" onClick={() => setPreview(null)}>回到当前 demo</button></div>}
-                {d.variants.map((v) => (
-                  <div key={v.slug} className={`variant ${preview === v.index ? 'on' : ''}`}>
-                    <span className="vname">{v.name}</span><span className="hint">{v.created.slice(0, 16).replace('T', ' ')}</span><span className="spacer" />
-                    <button className="ghost sm" onClick={() => setPreview(preview === v.index ? null : v.index)}>{preview === v.index ? '收起' : '预览'}</button>
-                    <button className="ghost sm" disabled={running} onClick={async () => { if (confirm(`用「${v.name}」覆盖当前 demo？建议先把当前 demo 另存。`)) { await restoreVariant(id, v.slug); setPreview(null); setReloadKey((k) => k + 1); } }}>恢复</button>
-                    <button className="ghost sm" disabled={running} onClick={() => setDialog({ title: `从「${v.name}」分支成新 pattern`, initial: `${d.meta.name} · ${v.name}`, label: '分支', run: (n) => forkPattern(id, n, v.slug) })}>分支</button>
-                    <button className="ghost sm danger" onClick={async () => { if (confirm(`删除方案「${v.name}」？`)) { await deleteVariant(id, v.slug); if (preview === v.index) setPreview(null); } }}>删</button>
-                  </div>
-                ))}
-              </div>
-            )}
-            <h3 style={{ marginTop: 6 }}>调 demo</h3>
             <div className="chat">
               <textarea placeholder='直接说："动画太快了" "颜色偏蓝，应该更接近原视频的紫色" "hover 状态缺了个阴影"' value={fb} onChange={(e) => setFb(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && fb.trim() && !running) { feedback(id, fb.trim()); setFb(''); } }} />

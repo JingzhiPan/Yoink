@@ -6,12 +6,15 @@ import { STATUS_COLOR } from './common';
 import { CATEGORIES, type Category } from '../../shared/types';
 
 export function Sidebar({ onSettings }: { onSettings: () => void }) {
-  const { goHome, settings, patterns, filters, setFilters, open, current } = useStore();
+  const { goHome, settings, patterns, filters, setFilters, open, current, previewVariant, setPreviewVariant } = useStore();
   const allTags = useMemo(() => { const c = new Map<string, number>(); patterns.forEach((p) => p.tags.forEach((t) => c.set(t, (c.get(t) ?? 0) + 1))); return [...c.entries()].sort((a, b) => b[1] - a[1]).map(([t]) => t); }, [patterns]);
   const lib = settings?.libraryRoot ?? '';
   const working = !!current;
-  const thumb = (p: { id: string; demo_screenshot_count: number }) => (
-    <img src={api.fileUrl(`${lib}/${p.id}/cover.png`) + '?v=' + p.demo_screenshot_count} alt="" onError={(e) => { const el = e.currentTarget; if (!el.dataset.fb) { el.dataset.fb = '1'; el.src = api.fileUrl(`${lib}/${p.id}/frames/frame-001.png`); } }} />
+  const thumb = (p: { id: string; demo_screenshot_count: number; favorite?: boolean }) => (
+    <span className="thumb">
+      <img src={api.fileUrl(`${lib}/${p.id}/cover.png`) + '?v=' + p.demo_screenshot_count} alt="" onError={(e) => { const el = e.currentTarget; if (!el.dataset.fb) { el.dataset.fb = '1'; el.src = api.fileUrl(`${lib}/${p.id}/frames/frame-001.png`); } }} />
+      {p.favorite && <span className="heart mini">{I.heart}</span>}
+    </span>
   );
   const list = working
     ? [...patterns].sort((a, b) => Number(!!b.favorite) - Number(!!a.favorite)).filter((p) => (!filters.cat || p.category === filters.cat) && (!filters.tag || p.tags.includes(filters.tag)))
@@ -32,14 +35,24 @@ export function Sidebar({ onSettings }: { onSettings: () => void }) {
       <div className="favs no-drag">
         <h4>{working ? <>Library · {list.length}</> : <><span className="heart">{I.heart}</span> Favorites · {list.length}</>}</h4>
         {!working && list.length === 0 && <div className="hint">卡片右上角 "…" 里点喜欢，就会出现在这。</div>}
-        {list.map((p) => (
-          <button key={p.id} className={`fav ${current?.meta.id === p.id ? 'on' : ''}`} onClick={() => open(p.id)}>
-            {thumb(p)}
-            <span>{p.name}</span>
-            {working && <i className="dot" style={{ background: STATUS_COLOR[p.status] }} title={p.status} />}
-            {working && p.favorite && <span className="heart mini">{I.heart}</span>}
-          </button>
-        ))}
+        {list.map((p) => {
+          const isCur = current?.meta.id === p.id;
+          const variants = isCur ? current!.variants : [];
+          return (
+            <div key={p.id} className="fav-group">
+              <button className={`fav ${isCur && !previewVariant ? 'on' : ''}`} onClick={() => { if (isCur) setPreviewVariant(null); else open(p.id); }}>
+                {thumb(p)}
+                <span>{p.name}</span>
+                {working && <i className="dot" style={{ background: STATUS_COLOR[p.status] }} title={p.status} />}
+              </button>
+              {variants.map((v) => (
+                <button key={v.slug} className={`fav sub ${previewVariant === v.index ? 'on' : ''}`} onClick={() => setPreviewVariant(previewVariant === v.index ? null : v.index)} title={v.created.slice(0, 16).replace('T', ' ')}>
+                  <i className="branch" /><span>{v.name}</span>
+                </button>
+              ))}
+            </div>
+          );
+        })}
       </div>
 
       <div className="sidebar-foot no-drag">

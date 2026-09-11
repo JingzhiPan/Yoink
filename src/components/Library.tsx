@@ -8,7 +8,7 @@ const METHOD_NAME = { api: 'API 模式', computer_use: 'Computer Use', manual: '
 const KIND_STEP: Record<string, number> = { extract: 0, parse: 1, verify: 2 };
 
 export function Library({ onPickMethod }: { onPickMethod: () => void }) {
-  const { patterns, open, current, importVideos, settings, jobs, updateMeta, deletePattern, filters } = useStore();
+  const { patterns, open, select, selected, importVideos, settings, jobs, updateMeta, deletePattern, filters } = useStore();
   const { cat, tag } = filters;
   const [menu, setMenu] = useState<string | null>(null);
   const [q, setQ] = useState('');
@@ -55,12 +55,13 @@ export function Library({ onPickMethod }: { onPickMethod: () => void }) {
         {shown.length === 0 ? <div className="emptylib">{patterns.length ? 'No pattern matches.' : 'Nothing here yet. Drop a video.'}</div> : (
           <div className="grid">
             {shown.map((p) => (
-              <div className={`card ${current?.meta.id === p.id ? 'selected' : ''}`} key={p.id} onClick={() => open(p.id)}>
+              <div className={`card ${selected?.meta.id === p.id ? 'selected' : ''}`} key={p.id} onClick={() => select(selected?.meta.id === p.id ? null : p.id)} onDoubleClick={() => open(p.id)}>
                 <div className="cover">{p.frame_count > 0 ? <img src={api.fileUrl(`${lib}/${p.id}/cover.png`) + '?v=' + p.demo_screenshot_count} alt="" loading="lazy" onError={(e) => { const el = e.currentTarget; if (!el.dataset.fb) { el.dataset.fb = '1'; el.src = api.fileUrl(`${lib}/${p.id}/frames/frame-001.png`); } }} /> : 'no cover'}</div>
                 {p.favorite && <span className="heart" title="喜欢">{I.heart}</span>}
                 <button className="dots" onClick={(e) => { e.stopPropagation(); setMenu(menu === p.id ? null : p.id); }}>{I.dots}</button>
                 {menu === p.id && (
                   <div className="menu" onClick={(e) => e.stopPropagation()}>
+                    <button onClick={() => { setMenu(null); open(p.id); }}>进入工作区</button>
                     <button onClick={() => { updateMeta(p.id, { favorite: !p.favorite }); setMenu(null); }}>{p.favorite ? '取消喜欢' : '喜欢'}</button>
                     <button className="danger" onClick={() => { setMenu(null); if (confirm(`删除 ${p.name}？整个文件夹都会删掉。`)) deletePattern(p.id); }}>删除</button>
                   </div>
