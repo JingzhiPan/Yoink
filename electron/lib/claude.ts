@@ -66,6 +66,8 @@ export async function runClaude(opts: ClaudeRunOpts): Promise<string> {
       running.delete(key);
       opts.signal?.removeEventListener('abort', onAbort);
       if (opts.signal?.aborted) return reject(new Error('已取消'));
+      const all = stderr + '\n' + lastText;
+      if (/Failed to authenticate|OAuth session expired|not logged in/i.test(all)) return reject(new Error('Claude Code 登录过期了。终端里跑一次 `claude auth login` 重新登录，再重试这一步。'));
       if (code !== 0 && !result) return reject(new Error(`claude 退出码 ${code}: ${stderr.slice(-800)}`));
       resolve(stripNoise(result || lastText));
     });
