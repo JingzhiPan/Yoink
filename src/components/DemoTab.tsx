@@ -41,7 +41,7 @@ export function DemoTab({ d }: { d: PatternDetail }) {
               {done && <span className="status" style={{ ['--sc' as string]: 'var(--s-done)' }}>已确认</span>}
             </div>
             <ScaledFrame src={api.fileUrl(preview ?? d.demoIndex) + '?r=' + reloadKey} onFrame={setFrameEl} />
-            {!preview && <TweaksPanel iframe={frameEl} patternId={id} running={running} loadKey={reloadKey} />}
+            {!preview && <TweaksPanel iframe={frameEl} patternId={id} running={running} loadKey={reloadKey} onReload={() => setReloadKey((k) => k + 1)} />}
             <div className="row variants">
               <h3>方案 · {d.variants.length}</h3><span className="spacer" />
               <button className="sm" disabled={running} onClick={() => setDialog({ title: '另存当前 demo 为方案', initial: `方案 ${d.variants.length + 1}`, label: '另存', run: (n) => saveVariant(id, n) })}>另存当前 demo</button>

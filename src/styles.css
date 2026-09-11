@@ -210,7 +210,7 @@ a { color: var(--terra); }
 
 /* tweaks */
 .tweaks { border: 1px solid var(--line); border-radius: 10px; background: var(--card); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
-.tweaks.empty { flex-direction: row; align-items: center; justify-content: space-between; }
+.tweaks.empty { flex-direction: row; align-items: center; justify-content: space-between; padding: 8px 12px; }
 .tweak-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 6px 18px; }
 .tweak { display: grid; grid-template-columns: 110px 1fr 64px; align-items: center; gap: 8px; font-size: 12.5px; }
 .tweak .tl { color: var(--ink2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

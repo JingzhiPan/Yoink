@@ -32,6 +32,17 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'yoink', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, bypassCSP: true, corsEnabled: true } },
 ]);
 
+const TWEAK_BRIDGE = `<script>(function(){
+  function manifest(){ var l=(window.__yoink&&window.__yoink.tweaks)||[]; var cs=getComputedStyle(document.documentElement);
+    return l.map(function(t){ var o={}; for (var k in t) o[k]=t[k]; o.value=cs.getPropertyValue(t.key).trim(); return o; }); }
+  function reply(src){ try { src.postMessage({type:'yoink:tweaks',tweaks:manifest()},'*'); } catch(e){} }
+  window.addEventListener('message',function(e){ var m=e.data||{};
+    if(m.type==='yoink:get-tweaks'){ reply(e.source); }
+    else if(m.type==='yoink:set-tweak'){ document.documentElement.style.setProperty(m.key,m.value); }
+    else if(m.type==='yoink:reset-tweaks'){ (m.keys||[]).forEach(function(k){ document.documentElement.style.removeProperty(k); }); reply(e.source); } });
+  window.addEventListener('load',function(){ if(window.parent!==window) reply(window.parent); });
+})();</script>`;
+
 // ─── settings (plain json in userData; key in safeStorage) ─────────
 interface Stored { inputMethod: InputMethod | null; openaiKeyEnc?: string }
 const settingsPath = () => path.join(app.getPath('userData'), 'settings.json');
@@ -346,9 +357,14 @@ app.whenReady().then(async () => {
     try {
       const url = new URL(request.url);
       const filePath = decodeURIComponent(url.pathname);
-      const data = await readFile(filePath);
+      let data: Uint8Array | string = new Uint8Array(await readFile(filePath));
       const mime = MIME[path.extname(filePath).toLowerCase()] ?? 'application/octet-stream';
-      return new Response(data, { headers: { 'Content-Type': mime, 'Content-Length': String(data.length), 'Access-Control-Allow-Origin': '*' } });
+      // demo pages get a tiny postMessage bridge so the (cross-origin) app can read/set tweaks
+      if (/\/(demo|variants\/[^/]+)\/index\.html$/.test(filePath)) {
+        const html = Buffer.from(data).toString('utf8');
+        data = /<\/body>/i.test(html) ? html.replace(/<\/body>/i, TWEAK_BRIDGE + '</body>') : html + TWEAK_BRIDGE;
+      }
+      return new Response(data as any, { headers: { 'Content-Type': mime, 'Access-Control-Allow-Origin': '*' } });
     } catch (err: any) {
       return new Response(err?.message ?? 'error', { status: err?.code === 'ENOENT' ? 404 : 500 });
     }
