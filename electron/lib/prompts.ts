@@ -136,6 +136,7 @@ export function computerUsePrompt(videoPath: string, durationSec: number): strin
 Watch this UI interaction demo video carefully and write an implementation spec for a front-end engineer. Only describe what is visible. Structure it exactly as:
 ${SPEC_FORMAT_HINT}
 PROMPT
-4. 等 ChatGPT 生成完毕（停止按钮消失、文字不再变化，最多等 3 分钟）。用 get_page_text 或 read_page 把最后一条助手回复完整读出来。
-5. 最终只输出 ChatGPT 的回答正文，用 \`\`\`markdown 围栏包裹，不加任何你自己的评论。`;
+4. 等 ChatGPT 生成完毕：停止按钮消失、连续两次间隔 5 秒的 get_page_text 内容完全相同，最多等 4 分钟。
+5. 把最后一条助手回复完整读出来。回复很长，用 get_page_text 读；若被截断，改用 read_page 并把 max_chars 设为 200000。回复必须以 "## Tags" 一节收尾，没读到 Tags 就再滚到底部重读一次。
+6. 最终只输出 ChatGPT 的回答正文，用 \`\`\`markdown 围栏包裹，从 "# " 标题开始到 Tags 结束，不加任何你自己的评论。`;
 }
