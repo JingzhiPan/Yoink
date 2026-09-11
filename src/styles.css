@@ -170,3 +170,14 @@ a { color: var(--terra); }
 .kv { font-family: var(--mono); font-size: 12px; background: #f3eee6; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; user-select: all; overflow: auto; white-space: pre; }
 .panel > * { flex: none; }
 .row > button, .row > h3 { flex: none; white-space: nowrap; }
+
+/* card overlay controls */
+.card .dots { position: absolute; top: 8px; right: 8px; width: 26px; height: 22px; padding: 0; border-radius: 6px; background: rgba(251,248,243,.85); border: 1px solid var(--line); display: grid; place-items: center; opacity: 0; transition: opacity .15s; }
+.card .dots svg { width: 16px; height: 16px; fill: var(--ink2); }
+.card:hover .dots, .card .dots:focus { opacity: 1; }
+.card .heart { position: absolute; top: 10px; left: 10px; width: 22px; height: 22px; display: grid; place-items: center; }
+.card .heart svg { width: 18px; height: 18px; fill: #ec6e9e; stroke: #fbf8f3; stroke-width: 1.2; filter: drop-shadow(0 1px 2px rgba(0,0,0,.15)); }
+.card .menu { position: absolute; top: 34px; right: 8px; z-index: 5; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 4px; display: flex; flex-direction: column; min-width: 120px; box-shadow: 0 8px 24px rgba(43,38,34,.15); }
+.card .menu button { background: transparent; border: 0; text-align: left; padding: 7px 10px; border-radius: 6px; font-size: 13px; }
+.card .menu button:hover { background: var(--line-soft); }
+.panel .cover img { object-fit: cover; }

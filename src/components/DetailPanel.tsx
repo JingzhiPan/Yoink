@@ -23,7 +23,7 @@ export function DetailPanel() {
   if (!d) return <aside className="panel drag"><div className="empty">Select a pattern to see its spec, demo and skill.</div></aside>;
   const hasSpec = !!d.spec;
   const skillUnlocked = ['demo_done', 'skill_ready'].includes(d.meta.status);
-  const cover = d.demoScreenshots[0] ?? d.frames[0];
+  const cover = d.cover ?? d.demoScreenshots[0] ?? d.frames[0];
   return (
     <aside className="panel" key={d.meta.id} ref={ref}>
       <div className="cover drag">{cover ? <img src={api.fileUrl(cover)} alt="" /> : 'no frames'}</div>

@@ -10,6 +10,7 @@ import { parseSpec, slugify } from './lib/parser.js';
 import { verifyPrompt, demoPrompt, feedbackPrompt, comparePrompt, skillPrompt, computerUsePrompt, consolidatePrompt } from './lib/prompts.js';
 import { screenshotDemo } from './lib/screenshot.js';
 import { parseWithOpenAI } from './lib/openai.js';
+import { makeCover, coverPath } from './lib/cover.js';
 import * as lib from './lib/library.js';
 import type { PatternMeta, Settings, JobEvent, JobKind, InputMethod, Category, Complexity } from '../shared/types.js';
 
@@ -70,6 +71,12 @@ async function runJob<T>(jobId: string, patternId: string, kind: JobKind, fn: (l
 }
 
 // ─── pipeline steps ────────────────────────────────────────────────
+/** Cover priority: 2nd demo screenshot (usually the "active" state) → 1st → middle video frame. */
+async function refreshCover(id: string) {
+  const d = await lib.getPattern(id);
+  const mid = d.frames[Math.floor(d.frames.length / 2)];
+  try { await makeCover([d.demoScreenshots[1], d.demoScreenshots[0], mid, d.frames[0]], coverPath(d.dir)); } catch (e) { console.warn('cover failed', e); }
+}
 async function stepExtract(jobId: string, videoPath: string): Promise<PatternMeta> {
   const base = path.basename(videoPath, path.extname(videoPath));
   const id = slugify(base);
@@ -77,7 +84,9 @@ async function stepExtract(jobId: string, videoPath: string): Promise<PatternMet
   return runJob(jobId, meta.id, 'extract', async (log) => {
     const d = await lib.getPattern(meta.id);
     const { count, duration } = await extractFrames(d.videoPath!, path.join(d.dir, 'frames'), log);
-    return lib.updateMeta(meta.id, { frame_count: count, video_duration_sec: Math.round(duration * 10) / 10, status: 'frames_extracted' });
+    const m = await lib.updateMeta(meta.id, { frame_count: count, video_duration_sec: Math.round(duration * 10) / 10, status: 'frames_extracted' });
+    await refreshCover(meta.id);
+    return m;
   });
 }
 
@@ -135,6 +144,7 @@ async function stepScreenshot(jobId: string, id: string, compare: boolean): Prom
     if (!d.demoIndex) throw new Error('还没有 demo');
     const shots = await screenshotDemo(d.demoIndex, path.join(d.dir, 'demo-screenshots'), log);
     await lib.updateMeta(id, { demo_screenshot_count: shots.length });
+    await refreshCover(id);
     if (compare && d.frames.length) {
       log('Claude 正在比对 demo 截图和原始帧…');
       const report = await runClaude({ prompt: comparePrompt(d.frames, shots), cwd: d.dir, allowedTools: ['Read'], onLog: log, signal });
@@ -161,6 +171,12 @@ async function stepConsolidate(jobId: string, id: string): Promise<PatternMeta> 
   return runJob(jobId, id, 'consolidate', async (log, signal) => {
     const d = await lib.getPattern(id);
     if (!d.spec || !d.demoIndex) throw new Error('需要 spec 和 demo');
+    if (d.demoScreenshots.length === 0) {
+      log('先给 demo 截一轮图…');
+      const shots = await screenshotDemo(d.demoIndex, path.join(d.dir, 'demo-screenshots'), log);
+      await lib.updateMeta(id, { demo_screenshot_count: shots.length });
+      await refreshCover(id);
+    }
     log('Claude 正在把校正合并回 spec 并精简…');
     const out = await runClaude({ prompt: consolidatePrompt(d.spec, d.feedbackLog ?? ''), cwd: d.dir, allowedTools: ['Read'], onLog: log, signal });
     const md = out.match(/```(?:markdown|md)\s*([\s\S]*?)```/i)?.[1]?.trim();
@@ -223,6 +239,7 @@ ipcMain.handle('library:list', () => lib.listPatterns());
 ipcMain.handle('pattern:get', (_e, id: string) => lib.getPattern(id));
 ipcMain.handle('pattern:updateMeta', (_e, id: string, patch: Partial<PatternMeta>) => lib.updateMeta(id, patch));
 ipcMain.handle('pattern:delete', (_e, id: string) => lib.deletePattern(id));
+ipcMain.handle('pattern:refreshCover', async (_e, id: string) => { await refreshCover(id); return lib.getPattern(id); });
 ipcMain.handle('pattern:rename', (_e, id: string, newId: string) => lib.renamePatternId(id, slugify(newId)));
 ipcMain.handle('pattern:saveSpec', async (_e, id: string, md: string) => { await lib.writeText(id, 'spec.md', md); return lib.readMeta(id); });
 ipcMain.handle('pattern:saveSkillMd', async (_e, id: string, md: string) => { await lib.writeText(id, 'skill/SKILL.md', md); return lib.readMeta(id); });
@@ -262,6 +279,8 @@ function createWindow() {
 
 app.whenReady().then(async () => {
   await lib.ensureLibrary();
+  // backfill covers for patterns created before cover generation existed
+  lib.listPatterns().then(async (ps) => { for (const p of ps) if (!existsSync(coverPath(lib.patternDir(p.id)))) await refreshCover(p.id); }).catch(() => {});
   if (process.platform === 'darwin') app.dock?.setIcon(path.join(APP_ROOT, 'build', 'icon-1024.png'));
   protocol.handle('yoink', async (request) => {
     try {

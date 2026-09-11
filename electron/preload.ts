@@ -10,6 +10,7 @@ const api = {
   getPattern: (id: string): Promise<PatternDetail> => ipcRenderer.invoke('pattern:get', id),
   updateMeta: (id: string, patch: Partial<PatternMeta>): Promise<PatternMeta> => ipcRenderer.invoke('pattern:updateMeta', id, patch),
   deletePattern: (id: string): Promise<void> => ipcRenderer.invoke('pattern:delete', id),
+  refreshCover: (id: string): Promise<PatternDetail> => ipcRenderer.invoke('pattern:refreshCover', id),
   renamePattern: (id: string, newId: string): Promise<string> => ipcRenderer.invoke('pattern:rename', id, newId),
   saveSpec: (id: string, md: string): Promise<PatternMeta> => ipcRenderer.invoke('pattern:saveSpec', id, md),
   saveSkillMd: (id: string, md: string): Promise<PatternMeta> => ipcRenderer.invoke('pattern:saveSkillMd', id, md),

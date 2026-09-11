@@ -69,6 +69,7 @@ export async function getPattern(id: string): Promise<PatternDetail> {
   return {
     meta, dir,
     videoPath: videoCandidates[0] ? path.join(dir, videoCandidates[0]) : null,
+    cover: existsSync(path.join(dir, 'cover.png')) ? path.join(dir, 'cover.png') : null,
     frames: await listPngs(path.join(dir, 'frames')),
     demoScreenshots: await listPngs(path.join(dir, 'demo-screenshots')),
     rawSpec: await readOpt(path.join(dir, 'raw-spec.md')),

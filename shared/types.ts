@@ -32,6 +32,7 @@ export interface PatternMeta {
   input_method: InputMethod | '';
   created: string;
   notes: string;
+  favorite?: boolean;
 }
 
 /** Everything the renderer needs to show a pattern. */
@@ -39,6 +40,7 @@ export interface PatternDetail {
   meta: PatternMeta;
   dir: string;
   videoPath: string | null;
+  cover: string | null;         // cover.png if generated
   frames: string[];            // absolute paths
   demoScreenshots: string[];   // absolute paths
   rawSpec: string | null;
