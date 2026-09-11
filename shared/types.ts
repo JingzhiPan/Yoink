@@ -43,6 +43,7 @@ export interface PatternDetail {
   demoScreenshots: string[];   // absolute paths
   rawSpec: string | null;
   spec: string | null;
+  specVerified: string | null; // long verified version kept after consolidation
   demoIndex: string | null;    // absolute path to demo/index.html
   demoCompare: string | null;  // demo-compare.md
   skillMd: string | null;
@@ -58,7 +59,7 @@ export interface Settings {
   ffmpegPath: string | null;
 }
 
-export type JobKind = 'extract' | 'parse' | 'verify' | 'demo' | 'screenshot' | 'feedback' | 'skill';
+export type JobKind = 'extract' | 'parse' | 'verify' | 'demo' | 'screenshot' | 'feedback' | 'consolidate' | 'skill';
 
 export interface JobEvent {
   jobId: string;

@@ -73,6 +73,7 @@ export async function getPattern(id: string): Promise<PatternDetail> {
     demoScreenshots: await listPngs(path.join(dir, 'demo-screenshots')),
     rawSpec: await readOpt(path.join(dir, 'raw-spec.md')),
     spec: await readOpt(path.join(dir, 'spec.md')),
+    specVerified: await readOpt(path.join(dir, 'spec-verified.md')),
     demoIndex: existsSync(demoIndex) ? demoIndex : null,
     demoCompare: await readOpt(path.join(dir, 'demo-compare.md')),
     skillMd: await readOpt(path.join(dir, 'skill', 'SKILL.md')),

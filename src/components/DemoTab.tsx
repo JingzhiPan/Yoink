@@ -32,7 +32,7 @@ export function DemoTab({ d }: { d: PatternDetail }) {
               <button className="sm" onClick={() => api.showInFinder(d.demoIndex!)}>在 Finder 显示</button>
               <button className="sm" disabled={running} onClick={() => screenshot(id, true)}>截图比对</button>
               <button className="sm" disabled={running} onClick={() => generateDemo(id)} title="丢掉当前 demo 重新生成">重新生成</button>
-              {!done && <button className="primary sm" disabled={running} onClick={() => confirmDemo(id)}>确认 demo ✓</button>}
+              {!done && <button className="primary sm" disabled={running} onClick={() => confirmDemo(id)} title="确认后 Claude 会把你的校正合并回 spec 并精简">确认 demo ✓</button>}
               {done && <span className="status" style={{ ['--sc' as string]: 'var(--s-done)' }}>已确认</span>}
             </div>
             <ScaledFrame src={api.fileUrl(d.demoIndex) + '?r=' + reloadKey} />

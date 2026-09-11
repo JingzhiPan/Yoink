@@ -99,7 +99,7 @@ export const useStore = create<State>((set, get) => {
     generateDemo: (id) => wrap(id, 'demo', (j) => api.generateDemo(j, id)),
     screenshot: (id, compare) => wrap(id, 'screenshot', (j) => api.screenshotDemo(j, id, compare)),
     feedback: (id, text) => wrap(id, 'feedback', (j) => api.sendFeedback(j, id, text)),
-    async confirmDemo(id) { await api.confirmDemo(id); await afterStep(id); },
+    confirmDemo: (id) => wrap(id, 'consolidate', (j) => api.confirmDemo(j, id)),
     generateSkill: (id) => wrap(id, 'skill', (j) => api.generateSkill(j, id)),
     async packSkill(id) { await api.packSkill(id); await afterStep(id); },
     async updateMeta(id, patch) { await api.updateMeta(id, patch); await afterStep(id); },

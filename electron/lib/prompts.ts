@@ -124,6 +124,18 @@ SPEC`;
 
 function path_basename(p: string) { return p.split('/').pop() ?? p; }
 
+export const VIDEO_PROMPT = `Watch this UI interaction demo video carefully and write an implementation spec for a front-end engineer.
+
+Rules:
+- Describe MOTION, not numbers. Do not list value sequences or frame-by-frame readings; say what moves, in which direction, how fast it feels (instant / snappy / eased / springy), and what triggers it.
+- Describe every ELEMENT you can see and how each one behaves over time.
+- Then list BOUNDARY MOMENTS explicitly, one bullet each: what happens when two elements meet or overlap, when a value reaches its minimum or maximum, when something appears from nothing or disappears completely, when the pointer enters/leaves/presses. These moments are where the craft is; do not skip them even if they last a fraction of a second.
+- Only describe what is visible. If you are unsure, say "unclear from video".
+
+Structure it exactly as:
+${SPEC_FORMAT_HINT}
+In "Interactions & Timing", split into two sub-lists: **Motion** and **Boundary moments**.`;
+
 export function computerUsePrompt(videoPath: string, durationSec: number): string {
   return `你有 Claude in Chrome 浏览器工具。任务：用用户已登录的 ChatGPT 网页，让它看一段 UI 交互演示视频并写出实现 spec，然后把 ChatGPT 的完整回答原样带回来。
 
@@ -133,10 +145,39 @@ export function computerUsePrompt(videoPath: string, durationSec: number): strin
    （视频 ${durationSec.toFixed(1)} 秒）。等缩略图出现、上传进度完成。如果站点拒绝视频文件，停止并回复 "VIDEO_NOT_ACCEPTED"。
 3. 在输入框粘贴下面这段 prompt（原样，不要改），发送：
 <<<PROMPT
-Watch this UI interaction demo video carefully and write an implementation spec for a front-end engineer. Only describe what is visible. Structure it exactly as:
-${SPEC_FORMAT_HINT}
+${VIDEO_PROMPT}
 PROMPT
 4. 等 ChatGPT 生成完毕：停止按钮消失、连续两次间隔 5 秒的 get_page_text 内容完全相同，最多等 4 分钟。
 5. 把最后一条助手回复完整读出来。回复很长，用 get_page_text 读；若被截断，改用 read_page 并把 max_chars 设为 200000。回复必须以 "## Tags" 一节收尾，没读到 Tags 就再滚到底部重读一次。
 6. 最终只输出 ChatGPT 的回答正文，用 \`\`\`markdown 围栏包裹，从 "# " 标题开始到 Tags 结束，不加任何你自己的评论。`;
+}
+
+export function consolidatePrompt(spec: string, feedback: string): string {
+  return `demo 已经被用户确认。请把 spec 重写成最终精简版，给以后要复用这个效果的工程师（和 Claude Code）看。
+
+输入：
+1. 当前 spec.md（逐帧核对版，偏长，含很多测量和"帧中不可判断"的备注）
+2. demo-feedback.md（用户看了 demo 后提出的校正，以及每次的修改说明）——这是最高优先级的事实来源，用户纠正过的行为必须写进 spec，并覆盖与之矛盾的旧描述
+3. demo/index.html（最终代码，用 Read 读取）——实际实现的参数、时长、缓动以代码为准
+
+要求：
+- 长度压到原 spec 的 1/3 左右。删掉像素级测量、重复描述、Verification Notes、"估计"的免责声明、无关的 app 外壳描述。
+- 保留：效果是什么、有哪些状态、每个交互怎么动、所有边界时刻的行为（元素相遇/到达极值/出现消失）、技术方案和关键参数。
+- 数值只保留代码里实际用到的关键值（尺寸、时长、缓动、颜色），不要帧测量。
+- 用户校正过的行为单独成一节"## Craft Details"，每条一句话讲清楚。
+
+${SPEC_FORMAT_HINT}
+（在 Technical Approach 之后、Tags 之前加 ## Craft Details）
+
+只输出 spec Markdown，用 \`\`\`markdown 围栏包裹。
+
+当前 spec：
+<<<SPEC
+${spec}
+SPEC
+
+用户反馈记录：
+<<<FEEDBACK
+${feedback || '（无）'}
+FEEDBACK`;
 }

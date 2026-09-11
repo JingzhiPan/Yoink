@@ -7,7 +7,7 @@ import { LIBRARY_ROOT, binary } from './lib/paths.js';
 import { extractFrames } from './lib/ffmpeg.js';
 import { runClaude, extractJson } from './lib/claude.js';
 import { parseSpec, slugify } from './lib/parser.js';
-import { verifyPrompt, demoPrompt, feedbackPrompt, comparePrompt, skillPrompt, computerUsePrompt } from './lib/prompts.js';
+import { verifyPrompt, demoPrompt, feedbackPrompt, comparePrompt, skillPrompt, computerUsePrompt, consolidatePrompt } from './lib/prompts.js';
 import { screenshotDemo } from './lib/screenshot.js';
 import { parseWithOpenAI } from './lib/openai.js';
 import * as lib from './lib/library.js';
@@ -156,6 +156,21 @@ async function stepFeedback(jobId: string, id: string, feedback: string): Promis
   });
 }
 
+/** On demo confirm: fold the user's corrections + final code back into a compact spec. */
+async function stepConsolidate(jobId: string, id: string): Promise<PatternMeta> {
+  return runJob(jobId, id, 'consolidate', async (log, signal) => {
+    const d = await lib.getPattern(id);
+    if (!d.spec || !d.demoIndex) throw new Error('需要 spec 和 demo');
+    log('Claude 正在把校正合并回 spec 并精简…');
+    const out = await runClaude({ prompt: consolidatePrompt(d.spec, d.feedbackLog ?? ''), cwd: d.dir, allowedTools: ['Read'], onLog: log, signal });
+    const md = out.match(/```(?:markdown|md)\s*([\s\S]*?)```/i)?.[1]?.trim();
+    if (!md || md.length < 200) throw new Error('精简 spec 输出异常：\n' + out.slice(0, 300));
+    if (!existsSync(path.join(d.dir, 'spec-verified.md'))) await lib.writeText(id, 'spec-verified.md', d.spec);
+    await lib.writeText(id, 'spec.md', md + '\n');
+    return lib.setStatus(id, 'demo_done');
+  });
+}
+
 async function stepSkill(jobId: string, id: string): Promise<PatternMeta> {
   return runJob(jobId, id, 'skill', async (log, signal) => {
     const d = await lib.getPattern(id);
@@ -220,7 +235,7 @@ ipcMain.handle('pipeline:verify', (_e, jobId: string, id: string) => stepVerify(
 ipcMain.handle('pipeline:demo', (_e, jobId: string, id: string) => stepDemo(jobId, id));
 ipcMain.handle('pipeline:screenshot', (_e, jobId: string, id: string, compare: boolean) => stepScreenshot(jobId, id, compare));
 ipcMain.handle('pipeline:feedback', (_e, jobId: string, id: string, fb: string) => stepFeedback(jobId, id, fb));
-ipcMain.handle('pipeline:confirmDemo', (_e, id: string) => lib.setStatus(id, 'demo_done'));
+ipcMain.handle('pipeline:confirmDemo', (_e, jobId: string, id: string) => stepConsolidate(jobId, id));
 ipcMain.handle('pipeline:skill', (_e, jobId: string, id: string) => stepSkill(jobId, id));
 ipcMain.handle('pipeline:packSkill', (_e, id: string) => lib.setStatus(id, 'skill_ready'));
 ipcMain.handle('pipeline:cancel', (_e, jobId: string) => { aborts.get(jobId)?.abort(); });

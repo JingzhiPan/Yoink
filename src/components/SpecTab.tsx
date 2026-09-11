@@ -46,18 +46,19 @@ export function SpecTab({ d }: { d: PatternDetail }) {
         {d.spec && (
           <>
             <div className="row">
-              <h3>Verified spec</h3><span className="spacer" />
+              <h3>{d.specVerified ? 'Final spec' : 'Verified spec'}</h3><span className="spacer" />
               {editing ? (<>
                 <button className="sm" onClick={() => { setSpec(d.spec ?? ''); setEditing(false); }}>取消</button>
                 <button className="primary sm" disabled={!dirty} onClick={async () => { await saveSpec(id, spec); setEditing(false); }}>保存</button>
               </>) : (<>
-                <button className="sm" onClick={() => setShowRaw(!showRaw)}>{showRaw ? '看 verified' : '看原始'}</button>
+                <button className="sm" onClick={() => setShowRaw(!showRaw)}>{showRaw ? '看当前' : (d.specVerified ? '看核对长版' : '看原始')}</button>
                 <button className="sm" disabled={running} onClick={() => verify(id)} title="用当前原始 spec 重新核对">重新核对</button>
+                {d.demoIndex && <button className="sm" disabled={running} onClick={() => useStore.getState().confirmDemo(id)} title="把 demo 反馈记录和最终代码合并回 spec，并精简">精简 spec</button>}
                 <button className="sm" onClick={() => setEditing(true)}>编辑</button>
               </>)}
             </div>
             {editing ? <textarea className="mono" style={{ minHeight: 320 }} value={spec} onChange={(e) => setSpec(e.target.value)} />
-              : <Markdown text={showRaw ? (d.rawSpec ?? '') : d.spec} />}
+              : <Markdown text={showRaw ? (d.specVerified ?? d.rawSpec ?? '') : d.spec} />}
           </>
         )}
         <JobLog job={job} />

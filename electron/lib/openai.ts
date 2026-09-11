@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { SPEC_FORMAT_HINT } from './prompts.js';
+import { VIDEO_PROMPT } from './prompts.js';
 
 /**
  * "API mode": send the extracted key frames to OpenAI's vision-capable chat endpoint
@@ -17,7 +17,7 @@ export async function parseWithOpenAI(apiKey: string, frames: string[], duration
     messages: [
       { role: 'system', content: 'You are a senior UI motion engineer. You reverse-engineer UI interaction demos into precise implementation specs.' },
       { role: 'user', content: [
-        { type: 'text', text: `These are ${picked.length} key frames, in order, from a ${durationSec.toFixed(1)}s UI interaction demo video. Describe the interaction as an implementation spec. Be concrete about states, timing, easing and the technical approach. Only describe what the frames support.\n\n${SPEC_FORMAT_HINT}` },
+        { type: 'text', text: `These are ${picked.length} key frames, in order, from a ${durationSec.toFixed(1)}s UI interaction demo video.\n\n${VIDEO_PROMPT}` },
         ...images,
       ] },
     ],
