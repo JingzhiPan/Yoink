@@ -239,7 +239,14 @@ ipcMain.handle('library:list', () => lib.listPatterns());
 ipcMain.handle('pattern:get', (_e, id: string) => lib.getPattern(id));
 ipcMain.handle('pattern:updateMeta', (_e, id: string, patch: Partial<PatternMeta>) => lib.updateMeta(id, patch));
 ipcMain.handle('pattern:delete', (_e, id: string) => lib.deletePattern(id));
-ipcMain.handle('pattern:refreshCover', async (_e, id: string) => { await refreshCover(id); return lib.getPattern(id); });
+ipcMain.handle('pattern:refreshCover', async (_e, id: string) => {
+  const d = await lib.getPattern(id);
+  if (d.demoIndex && d.demoScreenshots.length === 0) {
+    const shots = await screenshotDemo(d.demoIndex, path.join(d.dir, 'demo-screenshots'), () => {});
+    await lib.updateMeta(id, { demo_screenshot_count: shots.length });
+  }
+  await refreshCover(id); return lib.getPattern(id);
+});
 ipcMain.handle('pattern:rename', (_e, id: string, newId: string) => lib.renamePatternId(id, slugify(newId)));
 ipcMain.handle('pattern:saveSpec', async (_e, id: string, md: string) => { await lib.writeText(id, 'spec.md', md); return lib.readMeta(id); });
 ipcMain.handle('pattern:saveSkillMd', async (_e, id: string, md: string) => { await lib.writeText(id, 'skill/SKILL.md', md); return lib.readMeta(id); });

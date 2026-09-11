@@ -11,7 +11,7 @@ type Tab = 'spec' | 'demo' | 'skill';
 
 export function DetailPanel() {
   const d = useStore((s) => s.current);
-  const { updateMeta, deletePattern } = useStore();
+  const { updateMeta, deletePattern, refreshCover } = useStore();
   const [tab, setTab] = useState<Tab>('spec');
   const ref = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -26,7 +26,7 @@ export function DetailPanel() {
   const cover = d.cover ?? d.demoScreenshots[0] ?? d.frames[0];
   return (
     <aside className="panel" key={d.meta.id} ref={ref}>
-      <div className="cover drag">{cover ? <img src={api.fileUrl(cover)} alt="" /> : 'no frames'}</div>
+      <div className="cover drag">{cover ? <img src={api.fileUrl(cover) + '?v=' + d.meta.demo_screenshot_count + '-' + (d.cover ? 'c' : 'f')} alt="" key={cover + d.meta.demo_screenshot_count} /> : 'no frames'}</div>
       <div className="title-row">
         <h1><input key={d.meta.name} defaultValue={d.meta.name} onBlur={(e) => e.target.value !== d.meta.name && updateMeta(d.meta.id, { name: e.target.value })} /></h1>
         <StatusBadge status={d.meta.status} />
@@ -34,6 +34,7 @@ export function DetailPanel() {
       <div className="row head-row">
         <span className="meta-line">{d.meta.id} · {d.meta.video_duration_sec}s · {d.meta.frame_count} frames · {d.meta.input_method || '—'}</span>
         <span className="spacer" />
+        <button className="ghost sm" onClick={() => refreshCover(d.meta.id)} title="没有 demo 截图就先截一轮，再按主体重裁封面">刷新封面</button>
         <button className="ghost sm" onClick={() => api.showInFinder(d.dir)}>Finder</button>
         <button className="ghost sm danger" onClick={() => { if (confirm(`删除 ${d.meta.name}？整个文件夹都会删掉。`)) deletePattern(d.meta.id); }}>删除</button>
       </div>

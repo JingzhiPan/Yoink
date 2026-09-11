@@ -33,6 +33,7 @@ interface State {
   saveSpec(id: string, md: string): Promise<void>;
   saveSkillMd(id: string, md: string): Promise<void>;
   deletePattern(id: string): Promise<void>;
+  refreshCover(id: string): Promise<void>;
 }
 
 export const useStore = create<State>((set, get) => {
@@ -105,6 +106,7 @@ export const useStore = create<State>((set, get) => {
     async updateMeta(id, patch) { await api.updateMeta(id, patch); await afterStep(id); },
     async saveSpec(id, md) { await api.saveSpec(id, md); await afterStep(id); },
     async saveSkillMd(id, md) { await api.saveSkillMd(id, md); await afterStep(id); },
+    async refreshCover(id) { await api.refreshCover(id); await afterStep(id); },
     async deletePattern(id) { await api.deletePattern(id); get().goHome(); await get().refreshList(); },
   };
 });
