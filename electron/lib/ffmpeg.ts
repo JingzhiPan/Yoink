@@ -75,3 +75,28 @@ export async function extractFrames(
   log(`抽帧完成，共 ${count} 帧`);
   return { count, duration };
 }
+
+/**
+ * Make a copy small enough for the browser upload bridge (hard 10 MB limit).
+ * Tries progressively harsher settings until the file fits.
+ */
+export async function makeUploadCopy(video: string, out: string, maxBytes: number, log: (m: string) => void): Promise<string> {
+  const ffmpeg = binary('ffmpeg');
+  if (!ffmpeg) throw new Error('找不到 ffmpeg');
+  const { stat } = await import('node:fs/promises');
+  const size = (await stat(video)).size;
+  if (size <= maxBytes) return video;
+  const attempts = [
+    { crf: 28, h: 1080 }, { crf: 32, h: 900 }, { crf: 36, h: 720 }, { crf: 40, h: 540 },
+  ];
+  for (const a of attempts) {
+    log(`视频 ${(size / 1e6).toFixed(1)}MB 超过上传上限，压缩中（crf ${a.crf}, ≤${a.h}p）…`);
+    const r = await run(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-y', '-i', video,
+      '-vf', `scale=-2:'min(${a.h},ih)'`, '-c:v', 'libx264', '-crf', String(a.crf), '-preset', 'veryfast', '-an', '-movflags', '+faststart', out]);
+    if (r.code !== 0) throw new Error('压缩失败：' + r.stderr.slice(-300));
+    const s2 = (await stat(out)).size;
+    log(`压缩后 ${(s2 / 1e6).toFixed(1)}MB`);
+    if (s2 <= maxBytes) return out;
+  }
+  throw new Error('视频压不到 10MB 以下，试试先剪短一点');
+}

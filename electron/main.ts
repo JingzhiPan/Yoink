@@ -4,7 +4,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LIBRARY_ROOT, binary } from './lib/paths.js';
-import { extractFrames } from './lib/ffmpeg.js';
+import { extractFrames, makeUploadCopy } from './lib/ffmpeg.js';
 import { runClaude, extractJson } from './lib/claude.js';
 import { parseSpec, slugify } from './lib/parser.js';
 import { verifyPrompt, demoPrompt, feedbackPrompt, comparePrompt, skillPrompt, computerUsePrompt, consolidatePrompt } from './lib/prompts.js';
@@ -213,14 +213,19 @@ async function stepParseAuto(jobId: string, id: string, method: InputMethod): Pr
       return stepStoreRaw(id, text, 'api');
     }
     // computer_use: Claude Code + Chrome extension drives the user's logged-in ChatGPT tab
+    const uploadPath = await makeUploadCopy(d.videoPath!, path.join(d.dir, 'upload.mp4'), 8 * 1024 * 1024, log);
     log('Claude Code 正在通过 Chrome 操作 ChatGPT…');
     const out = await runClaude({
-      prompt: computerUsePrompt(d.videoPath!, d.meta.video_duration_sec), cwd: d.dir,
+      prompt: computerUsePrompt(uploadPath, d.meta.video_duration_sec), cwd: d.dir,
       allowedTools: ['mcp__claude-in-chrome__*'], extraArgs: ['--chrome'], onLog: log, signal,
     });
-    if (/NOT_LOGGED_IN/.test(out)) throw new Error('Chrome 里的 ChatGPT 没登录，先登录再试');
-    if (/VIDEO_NOT_ACCEPTED/.test(out)) throw new Error('ChatGPT 网页不接受这个视频文件');
-    const md = out.match(/```(?:markdown|md)?\s*([\s\S]*?)```/i)?.[1]?.trim() ?? out.trim();
+    // markers only count when they are the whole reply, not mentioned in prose
+    const head = out.trim().split('\n')[0].trim();
+    if (head === 'NOT_LOGGED_IN') throw new Error('Chrome 里的 ChatGPT 没登录，先登录再试');
+    if (head === 'VIDEO_NOT_ACCEPTED') throw new Error('ChatGPT 网页不接受这个视频文件');
+    const fence = out.match(/```(?:markdown|md)?\s*([\s\S]*?)```/i)?.[1]?.trim();
+    if (!fence) throw new Error('Claude 没拿到 spec，它说：\n' + out.slice(0, 600));
+    const md = fence;
     if (md.length < 200) throw new Error('从 ChatGPT 刮回来的内容太短：\n' + out.slice(0, 300));
     return stepStoreRaw(id, md, 'computer_use');
   });

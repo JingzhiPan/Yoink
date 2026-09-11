@@ -140,9 +140,9 @@ export function computerUsePrompt(videoPath: string, durationSec: number): strin
   return `你有 Claude in Chrome 浏览器工具。任务：用用户已登录的 ChatGPT 网页，让它看一段 UI 交互演示视频并写出实现 spec，然后把 ChatGPT 的完整回答原样带回来。
 
 步骤：
-1. 用 tabs_create 新开标签页，navigate 到 https://chatgpt.com/ ，然后 wait 3 秒再截图。登录判定要严格：只有同时满足「页面上没有聊天输入框（"Ask anything" 之类）」且「有明显的 Log in / Sign up 按钮」才算没登录；如果只是页面还在加载、有 Cloudflare 验证页、或弹了个可关闭的提示框，就再等 3 秒、关掉提示框、重新截图判断，最多重试 2 次。确认没登录才停止并回复 "NOT_LOGGED_IN"；已登录就直接继续，不要因为侧栏或页脚出现 "log in" 字样就误判。
+1. 用 tabs_create 新开标签页，navigate 到 https://chatgpt.com/ ，然后 wait 5 秒再截图。登录判定要严格：只有同时满足「页面上没有聊天输入框（"Ask anything" 之类）」且「有明显的 Log in / Sign up 按钮」才算没登录；如果只是页面还在加载、有 Cloudflare 验证页、或弹了个可关闭的提示框，就再等 3 秒、关掉提示框、重新截图判断，最多重试 2 次。确认没登录才停止并只回复一行 "NOT_LOGGED_IN"；已登录就直接继续，不要因为侧栏或页脚出现 "log in" 字样就误判。
 2. 找到输入框旁的附件/上传按钮，用 file_upload 工具上传本地文件：${videoPath}
-   （视频 ${durationSec.toFixed(1)} 秒）。等缩略图出现、上传进度完成。如果站点拒绝视频文件，停止并回复 "VIDEO_NOT_ACCEPTED"。
+   （视频 ${durationSec.toFixed(1)} 秒，文件已压到 10MB 以内，直接上传，不要自己再压缩或改用帧图）。上传后等最多 60 秒直到缩略图出现、进度条消失、发送按钮可用。如果站点明确拒绝视频文件（出现不支持的文件类型之类的提示），停止并只回复一行 "VIDEO_NOT_ACCEPTED"。
 3. 在输入框粘贴下面这段 prompt（原样，不要改），发送：
 <<<PROMPT
 ${VIDEO_PROMPT}
