@@ -14,8 +14,11 @@ export function DemoTab({ d }: { d: PatternDetail }) {
   const [frameEl, setFrameEl] = useState<HTMLIFrameElement | null>(null);
   const [dialog, setDialog] = useState<{ title: string; initial: string; label: string; run: (v: string) => Promise<void> } | null>(null);
   const jobs = useStore((s) => s.jobs);
-  const running = runningJobsFor(jobs, d.meta.id).length > 0;
-  const job = latestJobFor(jobs, d.meta.id);
+  const previewNow = useStore((s) => s.previewVariant);
+  const targetSlug = previewNow ? d.variants.find((x) => x.index === previewNow)?.slug ?? null : null;
+  // jobs are scoped to where you're working: main demo or one variant
+  const running = runningJobsFor(jobs, d.meta.id, targetSlug).length > 0;
+  const job = latestJobFor(jobs, d.meta.id, targetSlug);
   const [fb, setFb] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
@@ -87,7 +90,7 @@ export function DemoTab({ d }: { d: PatternDetail }) {
           </>
         )}
         <JobLog job={job} />
-        {d.demoIndex && (<>
+        {d.demoIndex && !variant && (<>
           <h3>原始帧 vs demo 截图</h3>
           {d.demoScreenshots.length === 0 && <div className="hint">确认 demo 后会自动按 demo 里定义的每个状态各截一张，让 Claude 和原始帧配对比对。</div>}
           {pairs ? (

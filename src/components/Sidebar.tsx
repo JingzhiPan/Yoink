@@ -7,6 +7,9 @@ import { CATEGORIES, type Category } from '../../shared/types';
 
 export function Sidebar({ onSettings }: { onSettings: () => void }) {
   const { goHome, settings, patterns, filters, setFilters, open, current, previewVariant, setPreviewVariant } = useStore();
+  const jobs = useStore((s) => s.jobs);
+  const busy = (id: string, variant: string | null) => Object.values(jobs).some((j) => j.patternId === id && j.status === 'running' && (j.variant ?? null) === variant);
+  const fish = <span className="fish" title="Claude 正在这里干活">{I.fish}</span>;
   const allTags = useMemo(() => { const c = new Map<string, number>(); patterns.forEach((p) => p.tags.forEach((t) => c.set(t, (c.get(t) ?? 0) + 1))); return [...c.entries()].sort((a, b) => b[1] - a[1]).map(([t]) => t); }, [patterns]);
   const lib = settings?.libraryRoot ?? '';
   const working = !!current;
@@ -44,11 +47,11 @@ export function Sidebar({ onSettings }: { onSettings: () => void }) {
                 {p.favorite && <span className="heart mini">{I.heart}</span>}
                 {thumb(p)}
                 <span className="name">{p.name}</span>
-                {working && <i className="dot" style={{ background: STATUS_COLOR[p.status] }} title={p.status} />}
+                {busy(p.id, null) ? fish : working && <i className="dot" style={{ background: STATUS_COLOR[p.status] }} title={p.status} />}
               </button>
               {variants.map((v) => (
                 <button key={v.slug} className={`fav sub ${previewVariant === v.index ? 'on' : ''}`} onClick={() => setPreviewVariant(previewVariant === v.index ? null : v.index)} title={v.created.slice(0, 16).replace('T', ' ')}>
-                  <i className="branch" /><span className="name">{v.name}</span>
+                  <i className="branch" /><span className="name">{v.name}</span>{busy(p.id, v.slug) && fish}
                 </button>
               ))}
             </div>

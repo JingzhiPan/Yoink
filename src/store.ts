@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { PatternMeta, PatternDetail, Settings, JobEvent, JobKind, InputMethod, PatternStatus, Category } from '../shared/types';
 import { api, newJobId } from './api';
 
-export interface Job { jobId: string; patternId: string; kind: JobKind; logs: string[]; status: 'running' | 'done' | 'error'; error?: string; startedAt: number }
+export interface Job { jobId: string; patternId: string; variant?: string; kind: JobKind; logs: string[]; status: 'running' | 'done' | 'error'; error?: string; startedAt: number }
 
 interface State {
   settings: Settings | null;
@@ -51,14 +51,14 @@ interface State {
 }
 
 export const useStore = create<State>((set, get) => {
-  const startJob = (patternId: string, kind: JobKind): string => {
+  const startJob = (patternId: string, kind: JobKind, variant?: string): string => {
     const jobId = newJobId();
-    set((s) => ({ jobs: { ...s.jobs, [jobId]: { jobId, patternId, kind, logs: [], status: 'running', startedAt: Date.now() } } }));
+    set((s) => ({ jobs: { ...s.jobs, [jobId]: { jobId, patternId, variant, kind, logs: [], status: 'running', startedAt: Date.now() } } }));
     return jobId;
   };
   const afterStep = async (id: string) => { await get().refreshList(); if (get().current?.meta.id === id) await get().reloadCurrent(); };
-  const wrap = async (id: string, kind: JobKind, fn: (jobId: string) => Promise<unknown>) => {
-    const jobId = startJob(id, kind);
+  const wrap = async (id: string, kind: JobKind, fn: (jobId: string) => Promise<unknown>, variant?: string) => {
+    const jobId = startJob(id, kind, variant);
     try { await fn(jobId); } catch { /* error already reflected via job event */ }
     await afterStep(id);
   };
@@ -118,11 +118,11 @@ export const useStore = create<State>((set, get) => {
     verify: (id) => wrap(id, 'verify', (j) => api.verify(j, id)),
     generateDemo: (id) => wrap(id, 'demo', (j) => api.generateDemo(j, id)),
     screenshot: (id, compare) => wrap(id, 'screenshot', (j) => api.screenshotDemo(j, id, compare)),
-    feedback: (id, text, variant) => wrap(id, 'feedback', (j) => api.sendFeedback(j, id, text, variant)),
+    feedback: (id, text, variant) => wrap(id, 'feedback', (j) => api.sendFeedback(j, id, text, variant), variant),
     retag: (id) => wrap(id, 'retag', (j) => api.retag(j, id)),
     async updateVariant(id, slug, patch) { await api.updateVariant(id, slug, patch); await afterStep(id); },
     confirmDemo: (id) => wrap(id, 'consolidate', (j) => api.confirmDemo(j, id)),
-    extractTweaks: (id, focus, variant) => wrap(id, 'tweaks', (j) => api.extractTweaks(j, id, focus, variant)),
+    extractTweaks: (id, focus, variant) => wrap(id, 'tweaks', (j) => api.extractTweaks(j, id, focus, variant), variant),
     async applyTweaks(id, values, variant) { await api.applyTweaks(id, values, variant); await afterStep(id); },
     generateSkill: (id) => wrap(id, 'skill', (j) => api.generateSkill(j, id)),
     async packSkill(id) { await api.packSkill(id); await afterStep(id); },
@@ -138,7 +138,9 @@ export const useStore = create<State>((set, get) => {
   };
 });
 
-export const runningJobsFor = (jobs: Record<string, Job>, id: string) =>
-  Object.values(jobs).filter((j) => j.patternId === id && j.status === 'running');
-export const latestJobFor = (jobs: Record<string, Job>, id: string) =>
-  Object.values(jobs).filter((j) => j.patternId === id).sort((a, b) => b.startedAt - a.startedAt)[0];
+/** All jobs of a pattern, or — when `target` is given — only those on that exact target (null = main demo, slug = that variant). */
+const onTarget = (j: Job, target?: string | null) => target === undefined || (j.variant ?? null) === target;
+export const runningJobsFor = (jobs: Record<string, Job>, id: string, target?: string | null) =>
+  Object.values(jobs).filter((j) => j.patternId === id && j.status === 'running' && onTarget(j, target));
+export const latestJobFor = (jobs: Record<string, Job>, id: string, target?: string | null) =>
+  Object.values(jobs).filter((j) => j.patternId === id && onTarget(j, target)).sort((a, b) => b.startedAt - a.startedAt)[0];

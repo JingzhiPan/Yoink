@@ -6,6 +6,7 @@ export const I = {
   film: <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"/></svg>,
   arrow: <svg viewBox="0 0 40 34"><path d="M34 4 C 30 18, 20 26, 6 28"/><path d="M12 24 6 28l6 3"/></svg>,
   heart: <svg viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-9.5-9.2C1.2 8.6 3.2 5 6.8 5c2 0 3.4 1.1 4.2 2.4C11.8 6.1 13.2 5 15.2 5c3.6 0 5.6 3.6 4.3 6.8C17.5 16.4 12 21 12 21z"/></svg>,
+  fish: <svg viewBox="0 0 24 14"><path d="M2 7c3-4 7-6 11-6 3 0 6 2 8 6-2 4-5 6-8 6-4 0-8-2-11-6z"/><path d="M21 7l2-4v8z"/><circle cx="6" cy="6" r="1" className="eye"/></svg>,
   dots: <svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>,
   pencil: <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3z"/></svg>,
 };
