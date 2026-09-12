@@ -21,6 +21,9 @@ const api = {
   readFile: (p: string): Promise<string> => ipcRenderer.invoke('pattern:readFile', p),
 
   importVideo: (jobId: string, videoPath: string): Promise<PatternMeta> => ipcRenderer.invoke('pipeline:import', jobId, videoPath),
+  importImages: (jobId: string, paths: string[]): Promise<PatternMeta> => ipcRenderer.invoke('pipeline:importImages', jobId, paths),
+  addRefs: (id: string, paths: string[]): Promise<string[]> => ipcRenderer.invoke('refs:add', id, paths),
+  selectImages: (): Promise<string[]> => ipcRenderer.invoke('files:selectImages'),
   storeRaw: (id: string, text: string, method: InputMethod): Promise<PatternMeta> => ipcRenderer.invoke('pipeline:storeRaw', id, text, method),
   parseAuto: (jobId: string, id: string, method: InputMethod): Promise<PatternMeta> => ipcRenderer.invoke('pipeline:parseAuto', jobId, id, method),
   verify: (jobId: string, id: string): Promise<PatternMeta> => ipcRenderer.invoke('pipeline:verify', jobId, id),

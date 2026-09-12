@@ -84,6 +84,7 @@ async function getPatternRaw(id: string): Promise<PatternDetail> {
     videoPath: videoCandidates[0] ? path.join(dir, videoCandidates[0]) : null,
     cover: existsSync(path.join(dir, 'cover.png')) ? path.join(dir, 'cover.png') : null,
     frames: await listPngs(path.join(dir, 'frames')),
+    refs: await listPngs(path.join(dir, 'refs')),
     demoScreenshots: await listPngs(path.join(dir, 'demo-screenshots')),
     rawSpec: await readOpt(path.join(dir, 'raw-spec.md')),
     spec: await readOpt(path.join(dir, 'spec.md')),
@@ -100,6 +101,33 @@ async function getPatternRaw(id: string): Promise<PatternDetail> {
     feedbackLog: await readOpt(path.join(dir, 'demo-feedback.md')),
     variants: await listVariants(dir),
   };
+}
+
+/** Copy reference photos into refs/ (keeps extension; names de-duplicated). */
+export async function addRefs(id: string, paths: string[]): Promise<string[]> {
+  const rd = path.join(patternDir(id), 'refs');
+  await mkdir(rd, { recursive: true });
+  const out: string[] = [];
+  for (const p of paths) {
+    const ext = path.extname(p).toLowerCase().replace('.jpeg', '.jpg') || '.png';
+    let name = path.basename(p, path.extname(p)).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'ref';
+    let dst = path.join(rd, name + ext); let n = 2;
+    while (existsSync(dst)) dst = path.join(rd, `${name}-${n++}${ext}`);
+    await copyFile(p, dst); out.push(dst);
+  }
+  return out;
+}
+
+/** A pattern that starts from reference photos instead of a video. */
+export async function createPatternFromImages(id: string, name: string, paths: string[]): Promise<PatternMeta> {
+  await ensureLibrary();
+  let finalId = id; let n = 2;
+  while (existsSync(patternDir(finalId))) finalId = `${id}-${n++}`;
+  await mkdir(patternDir(finalId), { recursive: true });
+  const meta = { ...defaultMeta(finalId, name), input_method: 'manual' as const, notes: '从参考图开始的二创', self_check: true };
+  await writeMeta(meta);
+  await addRefs(finalId, paths);
+  return meta;
 }
 
 /** Create the pattern folder and copy the source video in. */

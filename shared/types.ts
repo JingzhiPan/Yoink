@@ -35,6 +35,7 @@ export interface PatternMeta {
   favorite?: boolean;
   hidden_tweaks?: string[];   // tweak keys the user hid from the panel
   tag_facets?: TagFacets;     // the same tags, keyed by facet
+  self_check?: boolean;       // after each feedback edit, screenshot and let Claude compare against refs/frames itself
 }
 
 /** One tag per facet (feels_like optional). Tech goes to tech_hints, not tags. */
@@ -48,6 +49,7 @@ export interface PatternDetail {
   videoPath: string | null;
   cover: string | null;         // cover.png if generated
   frames: string[];            // absolute paths
+  refs: string[];              // refs/: reference photos (no video needed)
   demoScreenshots: string[];   // absolute paths
   rawSpec: string | null;
   spec: string | null;
@@ -66,8 +68,8 @@ export interface PatternDetail {
   variants: DemoVariant[];     // saved demo snapshots under variants/
 }
 
-export type JudgmentKind = 'aesthetic' | 'shape' | 'mechanism' | 'ownership';
-export const JUDGMENT_KIND_LABEL: Record<JudgmentKind, string> = { aesthetic: '审美意图', shape: '形状', mechanism: '机制二选一', ownership: '归属' };
+export type JudgmentKind = 'aesthetic' | 'shape' | 'mechanism' | 'ownership' | 'physics';
+export const JUDGMENT_KIND_LABEL: Record<JudgmentKind, string> = { aesthetic: '审美意图', shape: '形状', mechanism: '机制二选一', ownership: '归属', physics: '物理 vs 照片' };
 /** One thing the frames can't settle; the designer answers it before/after the demo. */
 export interface JudgmentItem { id: string; kind: JudgmentKind; q: string; options: string[]; frame: string; where: string; verify: string; answer: string }
 export interface TweakInfo { key: string; label: string; type: string; unit?: string }

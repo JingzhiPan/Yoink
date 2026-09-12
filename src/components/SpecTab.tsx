@@ -8,7 +8,9 @@ import { Judgment } from './Judgment';
 import { RegionPicker } from './RegionPicker';
 
 export function SpecTab({ d }: { d: PatternDetail }) {
-  const { storeRaw, verify, saveSpec, updateMeta, material, saveJudgment } = useStore();
+  const { storeRaw, verify, saveSpec, updateMeta, material, saveJudgment, addRefs } = useStore();
+  const images = [...d.frames, ...d.refs];
+  const isRefs = !d.frames.length && d.refs.length > 0;
   const jobs = useStore((s) => s.jobs);
   const settings = useStore((s) => s.settings);
   const running = runningJobsFor(jobs, d.meta.id).length > 0;
@@ -29,7 +31,7 @@ export function SpecTab({ d }: { d: PatternDetail }) {
           <>
             <h3>① 粘贴 spec</h3>
             <div className="callout">
-              把视频丢给 ChatGPT（或任何能看视频的工具），让它写一份交互 spec，然后把文字粘到下面。格式随意，俺会自动整理。
+              {isRefs ? '这条是从参考图开始的。写下你想做成什么：材质是什么、有哪些状态、怎么交互。格式随意，核对时会拿参考图对照材质，交互按你写的来。' : '把视频丢给 ChatGPT（或任何能看视频的工具），让它写一份交互 spec，然后把文字粘到下面。格式随意，俺会自动整理。'}
               {settings?.inputMethod !== 'manual' && <div className="hint" style={{ marginTop: 6 }}>这条还没自动解析。可以直接粘贴，或者点右边重跑。</div>}
             </div>
             <textarea className="mono" style={{ minHeight: 220 }} placeholder="# Liquid Gooey Effect&#10;&#10;When the user hovers…" value={raw} onChange={(e) => setRaw(e.target.value)} />
@@ -73,12 +75,13 @@ export function SpecTab({ d }: { d: PatternDetail }) {
           </>
         )}
         {d.spec && !d.judgment && !running && <div className="callout">核对完了还没拆材质。<button className="sm" style={{ marginLeft: 8 }} onClick={() => setMatPick(true)}>框主体，拆材质</button></div>}
-        {matPick && <RegionPicker frames={d.frames} onClose={() => setMatPick(false)} onPick={() => {}} multi={{ title: '框出要拆材质的主体', sub: '选一帧，框住那个元素（比如一张卡）。最多三块；录屏里有代码编辑器之类的东西就别框进去。', onDone: (picks) => { setMatPick(false); material(id, picks); } }} />}
+        {matPick && <RegionPicker frames={images} onClose={() => setMatPick(false)} onPick={() => {}} multi={{ title: '框出要拆材质的主体', sub: '选一帧或一张参考图，框住那个元素（比如一张卡）。最多三块；录屏里有代码编辑器之类的东西就别框进去。', onDone: (picks) => { setMatPick(false); material(id, picks); } }} />}
         {d.judgment && <Judgment items={d.judgment} frames={d.frames} onSave={(items) => saveJudgment(id, items)} />}
         {d.materialCrops.length > 0 && (<><h3>材质放大图 · {d.materialCrops.length}</h3><Gallery files={d.materialCrops} /></>)}
         <JobLog job={job} />
-        <h3>Key Frames · {d.frames.length}</h3>
-        <Gallery files={d.frames} />
+        <div className="row"><h3>参考图 · {d.refs.length}</h3><span className="spacer" /><button className="sm" onClick={async () => { const p = await window.yoink.selectImages(); if (p.length) await addRefs(id, p); }} title="真实产品照片、材质样张、设计稿都行；材质拆解和对照反馈都能用">加参考图</button></div>
+        {d.refs.length ? <Gallery files={d.refs} /> : <div className="hint">没有视频时靠它，有视频时也可以补材质参考。</div>}
+        {d.frames.length > 0 && (<><h3>Key Frames · {d.frames.length}</h3><Gallery files={d.frames} /></>)}
         <h3>Metadata</h3>
         <MetaEditor key={d.meta.id + d.meta.status} meta={d.meta} onChange={(p) => updateMeta(id, p)} />
         {d.videoPath && <video src={window.yoink.fileUrl(d.videoPath)} controls muted style={{ width: '100%', borderRadius: 8 }} />}

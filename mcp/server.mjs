@@ -67,6 +67,15 @@ server.registerTool('get_spec', {
   return text(await readFile(p, 'utf8'));
 });
 
+server.registerTool('get_refs', {
+  description: 'Return absolute paths of the reference photos (refs/) of a pattern, for patterns built from material references instead of a video.',
+  inputSchema: { pattern_id: z.string() },
+}, async ({ pattern_id }) => {
+  const rd = path.join(dir(pattern_id), 'refs');
+  if (!existsSync(rd)) return text([]);
+  return text((await readdir(rd)).filter((f) => /\.(png|jpe?g|webp)$/i.test(f)).sort().map((f) => path.join(rd, f)));
+});
+
 server.registerTool('get_frames', {
   description: 'Return absolute paths of the key frames extracted from the original demo video. Read them with your image-reading tool for visual reference.',
   inputSchema: { pattern_id: z.string() },

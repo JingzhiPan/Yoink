@@ -27,6 +27,7 @@ interface State {
   setInputMethod(m: InputMethod, openaiKey?: string): Promise<void>;
 
   importVideos(paths: string[]): Promise<void>;
+  addRefs(id: string, paths: string[]): Promise<void>;
   storeRaw(id: string, text: string): Promise<void>;
   verify(id: string): Promise<void>;
   generateDemo(id: string): Promise<void>;
@@ -98,9 +99,22 @@ export const useStore = create<State>((set, get) => {
       set({ settings: await api.setInputMethod(m), showMethodPicker: false });
     },
 
-    async importVideos(paths) {
+    async addRefs(id, paths) { await api.addRefs(id, paths); await afterStep(id); },
+    async importVideos(all) {
       const st = get().settings;
-      if (!st?.inputMethod) { set({ showMethodPicker: true }); }
+      const images = all.filter((p) => /\.(png|jpe?g|webp)$/i.test(p));
+      const paths = all.filter((p) => !/\.(png|jpe?g|webp)$/i.test(p));
+      if (images.length) {
+        // all dropped images become one reference-photo pattern; spec is written by hand, no parse step
+        const jobId = startJob('(new)', 'extract');
+        try {
+          const meta = await api.importImages(jobId, images);
+          set((s) => ({ jobs: { ...s.jobs, [jobId]: { ...s.jobs[jobId], patternId: meta.id } } }));
+          await get().refreshList();
+          if (!paths.length) await get().open(meta.id);
+        } catch { /* shown in log */ }
+      }
+      if (paths.length && !st?.inputMethod) { set({ showMethodPicker: true }); }
       for (const p of paths) {
         const jobId = startJob('(new)', 'extract');
         let meta: PatternMeta;

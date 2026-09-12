@@ -22,7 +22,7 @@ export function Library({ onPickMethod }: { onPickMethod: () => void }) {
   const activeImports = Object.values(jobs).filter((j) => ['extract', 'parse', 'verify'].includes(j.kind) && (j.status === 'running' || Date.now() - j.startedAt < 60_000)).sort((a, b) => b.startedAt - a.startedAt).slice(0, 4);
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault(); setOver(false);
-    const paths = Array.from(e.dataTransfer.files).filter((f) => /\.(mp4|mov|webm|m4v|gif|mkv)$/i.test(f.name)).map((f) => api.getPathForFile(f));
+    const paths = Array.from(e.dataTransfer.files).filter((f) => /\.(mp4|mov|webm|m4v|gif|mkv|png|jpe?g|webp)$/i.test(f.name)).map((f) => api.getPathForFile(f));
     if (paths.length) importVideos(paths);
   };
   const lib = settings?.libraryRoot ?? '';
@@ -36,7 +36,7 @@ export function Library({ onPickMethod }: { onPickMethod: () => void }) {
         onClick={async () => { const p = await api.selectVideos(); if (p.length) importVideos(p); }}>
         {I.film}
         <h2>Drag a video here</h2>
-        <p>We'll extract frames, analyze interactions, generate a demo,<br />and package it as a Claude-ready skill — automatically.</p>
+        <p>We'll extract frames, analyze interactions, generate a demo,<br />and package it as a Claude-ready skill — automatically.<br /><span style={{ fontSize: 12.5 }}>Or drop reference photos to start a material study from scratch.</span></p>
         <p className="method" onClick={(e) => { e.stopPropagation(); onPickMethod(); }}>解析方式：<b>{settings?.inputMethod ? METHOD_NAME[settings.inputMethod] : '未选择'}</b> · 点此更改</p>
         <div className="scribble"><span>Just drop it.</span>{I.arrow}</div>
       </div>

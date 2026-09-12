@@ -12,7 +12,7 @@ import { PointsOverlay, type PointsEdit } from './PointsOverlay';
 const REFRESH_KINDS = new Set(['feedback', 'tweaks', 'demo', 'consolidate', 'screenshot']);
 
 export function DemoTab({ d }: { d: PatternDetail }) {
-  const { generateDemo, feedback, confirmDemo, saveVariant, restoreVariant, deleteVariant, forkPattern, previewVariant: preview, setPreviewVariant: setPreview } = useStore();
+  const { generateDemo, feedback, confirmDemo, saveVariant, restoreVariant, deleteVariant, forkPattern, updateMeta, previewVariant: preview, setPreviewVariant: setPreview } = useStore();
   const [frameEl, setFrameEl] = useState<HTMLIFrameElement | null>(null);
   const [dialog, setDialog] = useState<{ title: string; initial: string; label: string; run: (v: string) => Promise<void> } | null>(null);
   const jobs = useStore((s) => s.jobs);
@@ -86,7 +86,9 @@ export function DemoTab({ d }: { d: PatternDetail }) {
                 <button className="ghost sm danger" onClick={async () => { if (confirm(`删除方案「${v.name}」？`)) await deleteVariant(id, v.slug); }}>删</button>
               </div>) : null; })()}
             <div className="row">
-              <h3>{variant ? `调方案「${variant.name}」` : '调 demo'}</h3><span className="spacer" />
+              <h3>{variant ? `调方案「${variant.name}」` : '调 demo'}</h3>
+              {!variant && <label className="check" title="每次改完自动截图，让 Claude 对着参考图/关键帧自己检查一遍再交给你。没有视频的二创默认开"><input type="checkbox" checked={d.meta.self_check ?? (d.refs.length > 0 || d.frames.length === 0)} onChange={(e) => updateMeta(id, { self_check: e.target.checked })} /> 改完自己看一眼</label>}
+              <span className="spacer" />
               {!variant && <button className="sm" disabled={running} onClick={() => setDialog({ title: '另存当前 demo 为方案', initial: `方案 ${d.variants.length + 1}`, label: '另存', run: (n) => saveVariant(id, n) })} title="复制一份当前 demo 作为独立方案，各改各的">另存当前 demo 为方案</button>}
               {!variant && <button className="sm" disabled={running} onClick={() => setDialog({ title: '分支成新 pattern', initial: d.meta.name + ' (variant)', label: '分支', run: (n) => forkPattern(id, n) })}>分支成新 pattern</button>}
             </div>
@@ -97,7 +99,7 @@ export function DemoTab({ d }: { d: PatternDetail }) {
               <div className="chat-side">
                 <button className="primary" disabled={!fb.trim() || running} onClick={() => { feedback(id, fb.trim(), vslug, crop ?? undefined); setFb(''); setCrop(null); }}>{variant ? '发给 Claude 改这个方案' : '发给 Claude 改'}</button>
                 {crop ? <span className="crop-chip"><img src={api.fileUrl(crop)} alt="" />已附对照图<button className="ghost sm" onClick={() => setCrop(null)}>×</button></span>
-                  : <button className="sm" disabled={!d.frames.length} onClick={() => setPicker(true)} title="在原始帧上框一块放大，让 Claude 对着像素改，而不是听你描述">框原图对照</button>}
+                  : <button className="sm" disabled={!d.frames.length && !d.refs.length} onClick={() => setPicker(true)} title="在原始帧上框一块放大，让 Claude 对着像素改，而不是听你描述">框原图对照</button>}
               </div>
             </div>
             {log && <div className="row"><button className="ghost sm" onClick={() => setShowLog(!showLog)}>{showLog ? '收起' : '查看'}修改记录</button></div>}
@@ -126,7 +128,7 @@ export function DemoTab({ d }: { d: PatternDetail }) {
           )}
           {d.demoCompare && (<><h3>比对报告</h3><Markdown text={d.demoCompare} /></>)}
         </>)}
-        {picker && <RegionPicker frames={d.frames} onClose={() => setPicker(false)} onPick={async (f, r) => { setPicker(false); setCrop(await api.cropFrame(id, f, r)); }} />}
+        {picker && <RegionPicker frames={[...d.frames, ...d.refs]} onClose={() => setPicker(false)} onPick={async (f, r) => { setPicker(false); setCrop(await api.cropFrame(id, f, r)); }} />}
         {dialog && <NameDialog title={dialog.title} initial={dialog.initial} confirmLabel={dialog.label} onClose={() => setDialog(null)} onSubmit={async (n) => { setDialog(null); await dialog.run(n); }} />}
     </>
   );

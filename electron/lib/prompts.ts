@@ -19,8 +19,8 @@ export const SPEC_FORMAT_HINT = `统一 spec 格式（Markdown）：
 ## Tags — 逗号分隔的英文标签
 （Core Principle 和 Timeline 靠看视频才写得出，帧核对时保留原文不删）`;
 
-export function verifyPrompt(meta: PatternMeta, rawSpec: string, frames: string[]): string {
-  return `你是 UI 交互效果的技术审阅者。有一段 UI 演示视频，已抽出 ${frames.length} 张关键帧（按时间顺序），另有一份由其他模型（可能是 GPT）看视频写出的原始 spec。你的任务是"交叉核对"：用 Read 工具逐张查看帧图，然后逐条校验原始 spec。
+export function verifyPrompt(meta: PatternMeta, rawSpec: string, frames: string[], isRefs = false): string {
+  return `你是 UI 交互效果的技术审阅者。${isRefs ? `这个 pattern 没有视频，只有 ${frames.length} 张参考图（真实产品/材质照片或设计稿），另有一份用户写的原始 spec，说的是想做成什么。参考图是材质和造型的依据，交互部分以 spec 为准、不要因为图里看不到就删。` : `有一段 UI 演示视频，已抽出 ${frames.length} 张关键帧（按时间顺序），另有一份由其他模型（可能是 GPT）看视频写出的原始 spec。`}你的任务是"交叉核对"：用 Read 工具逐张查看帧图，然后逐条校验原始 spec。
 
 核对规则：
 1. 原始 spec 里描述了帧里完全看不到、也无法从帧序列合理推断的东西 → 删掉，并在末尾"Verification Notes"里记一条。
@@ -61,6 +61,7 @@ export const DEMO_CONVENTION = `demo 约定（必须遵守）：
   在每次用到时现读（不要启动时缓存），这样外部改变量能实时生效。再声明清单：
   window.__yoink.tweaks = [{ key: "--x", label: "展开时长", type: "range", min: 100, max: 1200, step: 10, unit: "ms" }, { key: "--accent", label: "主色", type: "color" }, ...]
   type 有 range / color / text / points；range 的值写成 数字+unit（unit 可为空）。
+  6–14 个是抽取时的目标数量，不是硬上限：按反馈改 demo 时不要为了凑数把已有的 tweak 删掉或冻成常量，需要新参数就往清单里加。
   points 用于形状：值是 "x% y%, x% y%, ..." 这样的点列（相对某个元素的百分比坐标），CSS 里直接 clip-path: polygon(var(--k)) 或按点位计算；清单项要带 target: "<该元素的 CSS 选择器>"，外部会在 demo 上叠出可拖的手柄。凡是"这块高光/雾面/光带的形状、跨度、角点"这类用语言说不清的东西，一律做成 points，不要让人用文字描述形状。`;
 
 export function judgmentBlock(items: JudgmentItem[] | null): string {
@@ -90,7 +91,7 @@ SPEC`;
 }
 
 export function feedbackPrompt(feedback: string, history: string, spec: string, file = 'demo/index.html', crop?: string, shot?: string): string {
-  return `当前目录下 ${file} 是根据 spec 生成的 UI 交互 demo${file !== 'demo/index.html' ? '（这是一个独立分支方案，只改这个文件，不要碰 demo/index.html）' : ''}。用户看过效果后给出反馈，请用 Read 读取 ${file}，按反馈用 Edit 修改（保持 window.__yoink.states 约定不变，如需可增删状态）。改完一句话说明改了什么。
+  return `当前目录下 ${file} 是根据 spec 生成的 UI 交互 demo${file !== 'demo/index.html' ? '（这是一个独立分支方案，只改这个文件，不要碰 demo/index.html）' : ''}。用户看过效果后给出反馈，请用 Read 读取 ${file}，按反馈用 Edit 修改（保持 window.__yoink.states 约定不变，如需可增删状态）。改完一句话说明改了什么。不要为了 tweak 数量把已有的 tweak 删掉或冻成常量。
 ${crop ? `
 用户从原始视频帧上框了一块放大图作为对照：${crop}
 ${shot ? `demo 当前最接近的状态截图：${shot}` : ''}
@@ -285,31 +286,45 @@ spec：
 ${spec.slice(0, 5000)}`;
 }
 
-export function materialPrompt(spec: string, crops: string[], frames: string[]): string {
-  return `你是做 UI 材质还原的设计工程师。下面是一个 UI 效果的关键帧和它们的放大裁切图。请全部 Read，然后做两件事。
+export function materialPrompt(spec: string, crops: string[], images: string[], isRefs: boolean): string {
+  return `你是做 UI 材质还原的设计工程师，懂一点光学。下面是一个 UI 效果的${isRefs ? '参考照片' : '视频关键帧'}和它们的放大裁切图。请全部 Read，然后按四步做。
 
 放大图（主体 2x、中心细节 3x，看层次以这些为准）：
 ${crops.map((f) => `- ${f}`).join('\n')}
-整帧（看位置关系）：
-${frames.map((f) => `- ${f}`).join('\n')}
+整图（看位置关系）：
+${images.map((f) => `- ${f}`).join('\n')}
 
-一、材质层栈。像 Figma 图层面板那样，把主体表面从上到下拆成一层一层，每层一行，表格列：层 | 形状 | 位置（用主体自身的百分比坐标，如"顶边，左右各留 4%，高约 6%"）| 软硬（清晰边/羽化，估 blur 半径）| 衰减方向（向哪边渐隐）| 浓淡（估 opacity）| 叠加方式（normal/screen/plus-lighter/multiply…）| 判断依据（在哪张放大图的哪里看到的）。
-规则：
-- 只写看得见的层；一层还是两层拿不准，就拆成两层并在依据里写"可能是同一层"。
-- 特别留意：边缘亮线、顶边柔光、大面积雾面/白纱、笔触状高光、四边压暗、描边粗细与透明度、投影/辉光颜色、相邻元素重叠处的叠加结果。
-- 区分"画在单个元素上的"和"多个元素重叠才出现的"——后者标明。
-- 用材质词定性一次：这更像玻璃/塑料薄片/宝石/金属/纸/果冻中的哪个，为什么（比如"四边压平、中间略鼓 → 塑料薄片"）。
+第一步 · 物理层（先别看图，只根据材质和几何推）。先用一个材质词定性（玻璃 / 塑料薄片 / 亚克力 / 乳胶 / 金属 / 纸 / 果冻 …）并写出几何（薄壁筒、圆环、囊、平板 …），然后列出光学上"应该有"的层：镜面高光的锐度由表面粗糙度决定、菲涅尔带来的边缘压暗或边缘反光、次表面散射带来的透光暖色、薄处淡厚处浓的厚度着色、自阴影和接触阴影落在哪、卷边/圆环的内外高光位置由光源方向决定。每条写依据。最后定一个**光源约定**：方向、软硬、色温；demo 里所有高光和阴影都从这一个光源推，才会互相一致。
 
-二、待人工判定清单。列出你从静止图判断不了、但会直接影响 demo 做法的问题，覆盖这四类，每类至少想一想：
-- aesthetic：审美意图（材质到底往哪个方向走、浓淡取舍）
-- shape：形状（哪块高光/雾面的准确形状，静止图看不清或有多种画法）
-- mechanism：机制二选一（同一现象两种实现都能对上帧，例如整卡翻转 vs 内容层翻转）
-- ownership：归属（这个像素效果属于单个元素，还是相邻元素叠出来的，还是背景）
-每条给 2–3 个候选、看哪张帧的哪个位置能判断、在 demo 里怎么验证。只列真会改变做法的，3–8 条。
+第二步 · 照片层。Read 放大图，像 Figma 图层面板那样把主体表面从上到下拆成一层一层：形状、位置（主体自身百分比坐标）、软硬（估 blur 半径）、衰减方向、浓淡（估 opacity）、叠加方式、判断依据（哪张放大图的哪里）。区分"画在单个元素上的"和"多个元素重叠才出现的"。
 
-输出格式：先一个 \`\`\`markdown 围栏，内容只有层栈那一节的正文（不要标题行）；再一个 \`\`\`json 围栏：
-{"items":[{"kind":"aesthetic|shape|mechanism|ownership","q":"问题一句话","options":["候选1","候选2"],"frame":"frame-007.png","where":"红卡左上角顶边","verify":"hover 红卡后看顶边是否……"}]}
+第三步 · 交叉对账，得到理想化层栈。逐层判定来源：
+- 照片里有、物理也预期 → 保留，参数按物理和光源约定修正（来源写"交叉"）
+- 照片里有、物理解释不了 → 拍摄噪音（环境反光、眩光、脏点、这盏灯的偶然），默认不画（来源写"照片-噪音"）
+- 物理预期有、照片里看不清 → 补上并标"推断"（来源写"物理"）
+输出一张表，列：# | 层 | 形状 | 位置 | 软硬 | 衰减方向 | 浓淡 | 叠加 | 来源 | 依据。表前先写材质定性一句话和光源约定一行。
+
+第四步 · 待人工判定清单。凡是第三步里拿不准的对账，每条一个问题，kind 用 "physics"，options 固定给三个："按物理来" / "按照片来" / "丢掉"（可以在每个后面括号补一句这意味着什么）。另外照旧列这四类：aesthetic（审美意图）、shape（形状）、mechanism（机制二选一）、ownership（归属）。每条给候选、看哪张图的哪个位置能判断、在 demo 里怎么验证。只列真会改变做法的，4–10 条。
+
+输出格式：先一个 \`\`\`markdown 围栏，内容是第三步的材质定性、光源约定和理想化层栈表（不要标题行）；再一个 \`\`\`json 围栏：
+{"items":[{"kind":"physics|aesthetic|shape|mechanism|ownership","q":"问题一句话","options":["按物理来（…）","按照片来（…）","丢掉"],"frame":"ref-01.jpg","where":"套身左侧边缘","verify":"…"}]}
 
 spec 供参考（不要复述它，你看到的比它细）：
 ${spec.slice(0, 4000)}`;
+}
+
+/** After a feedback edit with no video to compare against: Claude looks at its own screenshots next to the reference and fixes what it can see. */
+export function selfCheckPrompt(file: string, shots: string[], refs: string[], feedback: string, crop?: string): string {
+  return `你刚按用户反馈改了 ${file}。下面是改完后每个状态的截图，以及用户的参考图${crop ? '和他框出来的对照放大图' : ''}。请先 Read 全部图片，用眼睛检查你刚才的修改是否真的到位，再决定要不要再改。
+
+用户这次的反馈：
+${feedback}
+
+改完的截图：
+${shots.map((f) => `- ${f}`).join('\n')}
+参考图：
+${refs.map((f) => `- ${f}`).join('\n')}
+${crop ? `对照放大图：${crop}\n` : ''}
+检查三件事：① 反馈要求的改动在截图里看得见吗；② 有没有改出穿帮（形状不闭合、层错位、旧形状残留、颜色发灰过曝）；③ 和参考图比，材质读法对不对（高光锐度、边缘压暗、透光感）。
+看得见的问题直接用 Edit 修掉（只改 ${file}，保持 window.__yoink.states 和已有 tweaks 不变）。最后只输出一段话：你在截图里看到了什么、修了什么、还有什么需要用户自己定。不要客套。`;
 }

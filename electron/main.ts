@@ -7,7 +7,7 @@ import { LIBRARY_ROOT, binary } from './lib/paths.js';
 import { extractFrames, makeUploadCopy } from './lib/ffmpeg.js';
 import { runClaude, extractJson } from './lib/claude.js';
 import { parseSpec, slugify } from './lib/parser.js';
-import { verifyPrompt, demoPrompt, feedbackPrompt, comparePrompt, skillPrompt, computerUsePrompt, consolidatePrompt, tweaksPrompt, retagPrompt, materialPrompt } from './lib/prompts.js';
+import { verifyPrompt, demoPrompt, feedbackPrompt, comparePrompt, skillPrompt, computerUsePrompt, consolidatePrompt, tweaksPrompt, retagPrompt, materialPrompt, selfCheckPrompt } from './lib/prompts.js';
 import { screenshotDemo } from './lib/screenshot.js';
 import { parseWithOpenAI } from './lib/openai.js';
 import { makeCover, coverPath, makeMaterialCrops, makeMaterialCropsFrom, cropRegion } from './lib/cover.js';
@@ -74,7 +74,7 @@ function deliverOpens() {
 }
 app.on('open-file', (e, filePath) => {
   e.preventDefault();
-  if (/\.(mp4|mov|webm|m4v|gif|mkv)$/i.test(filePath)) pendingOpens.push(filePath);
+  if (/\.(mp4|mov|webm|m4v|gif|mkv|png|jpe?g|webp)$/i.test(filePath)) pendingOpens.push(filePath);
   if (app.isReady()) { if (!mainWin) createWindow(); else deliverOpens(); }
 });
 const aborts = new Map<string, AbortController>();
@@ -101,8 +101,21 @@ async function runJob<T>(jobId: string, patternId: string, kind: JobKind, fn: (l
 async function refreshCover(id: string) {
   const d = await lib.getPattern(id);
   const mid = d.frames[Math.floor(d.frames.length / 2)];
-  try { await makeCover([d.demoScreenshots[1], d.demoScreenshots[0], mid, d.frames[0]], coverPath(d.dir)); } catch (e) { console.warn('cover failed', e); }
+  try { await makeCover([d.demoScreenshots[1], d.demoScreenshots[0], mid, d.frames[0], d.refs[0]], coverPath(d.dir)); } catch (e) { console.warn('cover failed', e); }
 }
+/** frames when there is a video, otherwise the reference photos */
+const imagesOf = (d: { frames: string[]; refs: string[] }) => (d.frames.length ? d.frames : d.refs);
+
+async function stepImportImages(jobId: string, paths: string[]): Promise<PatternMeta> {
+  const base = path.basename(paths[0], path.extname(paths[0]));
+  const meta = await lib.createPatternFromImages(slugify(base) || 'ref', base, paths);
+  return runJob(jobId, meta.id, 'extract', async (log) => {
+    log(`收了 ${paths.length} 张参考图`);
+    await refreshCover(meta.id);
+    return lib.readMeta(meta.id);
+  });
+}
+
 async function stepExtract(jobId: string, videoPath: string): Promise<PatternMeta> {
   const base = path.basename(videoPath, path.extname(videoPath));
   const id = slugify(base);
@@ -134,7 +147,8 @@ async function stepVerify(jobId: string, id: string): Promise<PatternMeta> {
     const d = await lib.getPattern(id);
     if (!d.rawSpec) throw new Error('还没有原始 spec');
     log('Claude 正在逐帧核对 spec…');
-    const out = await runClaude({ prompt: verifyPrompt(d.meta, d.rawSpec, d.frames), cwd: d.dir, allowedTools: ['Read'], onLog: log, signal });
+    if (!imagesOf(d).length) throw new Error('没有关键帧也没有参考图');
+    const out = await runClaude({ prompt: verifyPrompt(d.meta, d.rawSpec, imagesOf(d), !d.frames.length), cwd: d.dir, allowedTools: ['Read'], onLog: log, signal });
     const md = out.match(/```(?:markdown|md)\s*([\s\S]*?)```/i)?.[1]?.trim();
     const metaJson = extractJson<{ name?: string; tags?: string[]; category?: Category; complexity?: Complexity; tech_hints?: string[] }>(out.slice(out.lastIndexOf('```json')));
     if (!md) throw new Error('Claude 输出里没找到 spec Markdown 块。原文：\n' + out.slice(0, 500));
@@ -160,7 +174,7 @@ async function stepDemo(jobId: string, id: string): Promise<PatternMeta> {
     await lib.updateMeta(id, { status: 'demo_wip' });
     await mkdir(path.join(d.dir, 'demo'), { recursive: true });
     log('Claude Code 正在生成 demo…');
-    await runClaude({ prompt: demoPrompt(d.spec, d.frames, d.judgment, d.materialCrops), cwd: d.dir, allowedTools: ['Read', 'Write', 'Edit', 'Glob'], onLog: log, signal });
+    await runClaude({ prompt: demoPrompt(d.spec, imagesOf(d), d.judgment, d.materialCrops), cwd: d.dir, allowedTools: ['Read', 'Write', 'Edit', 'Glob'], onLog: log, signal });
     if (!existsSync(path.join(d.dir, 'demo', 'index.html'))) throw new Error('Claude 没有写出 demo/index.html');
     return lib.readMeta(id);
   });
@@ -246,6 +260,16 @@ async function stepFeedback(jobId: string, id: string, feedback: string, variant
     const shot = crop ? d.demoScreenshots[1] ?? d.demoScreenshots[0] : undefined;
     const out = await runClaude({ prompt: feedbackPrompt(feedback, t.history, d.spec, t.file, crop, shot), cwd: d.dir, allowedTools: ['Read', 'Write', 'Edit', 'Glob'], onLog: log, signal });
     await lib.appendText(id, t.log, `## ${stamp}\n**反馈：** ${feedback}${crop ? `\n（附对照图 ${path.relative(d.dir, crop)}）` : ''}\n\n**修改：** ${out.trim()}\n\n`);
+    // give it eyes: screenshot the result and let it compare against the reference itself
+    const selfCheck = d.meta.self_check ?? (d.refs.length > 0 || d.frames.length === 0);
+    if (selfCheck && !variant) {
+      log('截图，让 Claude 自己看一眼改得对不对…');
+      const shots = await screenshotDemo(t.abs, path.join(d.dir, 'demo-screenshots'), log);
+      await lib.updateMeta(id, { demo_screenshot_count: shots.length });
+      const note = await runClaude({ prompt: selfCheckPrompt(t.file, shots, imagesOf(d), feedback, crop), cwd: d.dir, allowedTools: ['Read', 'Edit'], onLog: log, signal });
+      await lib.appendText(id, t.log, `**自查：** ${note.trim()}\n\n`);
+      await refreshCover(id);
+    }
     return variant ? lib.readMeta(id) : lib.updateMeta(id, { status: 'demo_wip' });
   });
 }
@@ -329,17 +353,18 @@ type Pick = { frame: string; rect: { x: number; y: number; w: number; h: number 
 async function stepMaterial(jobId: string, id: string, picks: Pick[] = []): Promise<PatternMeta> {
   return runJob(jobId, id, 'material', async (log, signal) => {
     const d = await lib.getPattern(id);
-    if (!d.spec || !d.frames.length) throw new Error('需要先有核对过的 spec 和关键帧');
+    const imgs = imagesOf(d);
+    if (!d.spec || !imgs.length) throw new Error('需要先有核对过的 spec 和关键帧或参考图');
     log('裁放大图…');
-    const n = d.frames.length;
-    const autoPicks = [...new Set([Math.floor(n * 0.3), Math.floor(n * 0.7)])].map((i) => d.frames[Math.min(n - 1, i)]);
+    const n = imgs.length;
+    const autoPicks = [...new Set([Math.floor(n * 0.3), Math.floor(n * 0.7)])].map((i) => imgs[Math.min(n - 1, i)]);
     const { rm } = await import('node:fs/promises');
     await rm(path.join(d.dir, 'material'), { recursive: true, force: true });
     const crops: string[] = [];
     if (picks.length) for (const [i, p] of picks.entries()) crops.push(...await makeMaterialCropsFrom(p.frame, p.rect, path.join(d.dir, 'material'), `crop-${i + 1}-${path.basename(p.frame, '.png')}`));
     else for (const [i, f] of autoPicks.entries()) crops.push(...await makeMaterialCrops(f, path.join(d.dir, 'material'), `crop-${i + 1}-${path.basename(f, '.png')}`));
     log('Claude 正在拆材质层栈、列待判定问题…');
-    const out = await runClaude({ prompt: materialPrompt(d.spec, crops, d.frames), cwd: d.dir, allowedTools: ['Read'], onLog: log, signal });
+    const out = await runClaude({ prompt: materialPrompt(d.spec, crops, imgs, !d.frames.length), cwd: d.dir, allowedTools: ['Read'], onLog: log, signal });
     const md = out.match(/```(?:markdown|md)\s*([\s\S]*?)```/i)?.[1]?.trim();
     const j = extractJson<{ items?: any[] }>(out.slice(out.lastIndexOf('```json')));
     if (!md) throw new Error('没解析到材质层栈：\n' + out.slice(0, 300));
@@ -348,7 +373,7 @@ async function stepMaterial(jobId: string, id: string, picks: Pick[] = []): Prom
     const items: JudgmentItem[] = (j?.items ?? []).map((it: any, i: number) => {
       const q = String(it.q ?? '').trim();
       const prev = old.find((o) => o.q === q);
-      return { id: prev?.id ?? `j${Date.now().toString(36)}${i}`, kind: (['aesthetic', 'shape', 'mechanism', 'ownership'].includes(it.kind) ? it.kind : 'mechanism'), q, options: Array.isArray(it.options) ? it.options.map(String) : [], frame: String(it.frame ?? ''), where: String(it.where ?? ''), verify: String(it.verify ?? ''), answer: prev?.answer ?? '' };
+      return { id: prev?.id ?? `j${Date.now().toString(36)}${i}`, kind: (['aesthetic', 'shape', 'mechanism', 'ownership', 'physics'].includes(it.kind) ? it.kind : 'mechanism'), q, options: Array.isArray(it.options) ? it.options.map(String) : [], frame: String(it.frame ?? ''), where: String(it.where ?? ''), verify: String(it.verify ?? ''), answer: prev?.answer ?? '' };
     }).filter((it: JudgmentItem) => it.q);
     await lib.saveJudgment(id, items);
     return lib.readMeta(id);
@@ -421,6 +446,8 @@ ipcMain.handle('pattern:saveSkillMd', async (_e, id: string, md: string) => { aw
 ipcMain.handle('pattern:readFile', (_e, p: string) => readFile(p, 'utf8'));
 
 ipcMain.handle('pipeline:import', (_e, jobId: string, videoPath: string) => stepExtract(jobId, videoPath));
+ipcMain.handle('pipeline:importImages', (_e, jobId: string, paths: string[]) => stepImportImages(jobId, paths));
+ipcMain.handle('refs:add', (_e, id: string, paths: string[]) => lib.addRefs(id, paths));
 ipcMain.handle('pipeline:storeRaw', (_e, id: string, text: string, method: InputMethod) => stepStoreRaw(id, text, method));
 ipcMain.handle('pipeline:parseAuto', (_e, jobId: string, id: string, method: InputMethod) => stepParseAuto(jobId, id, method));
 ipcMain.handle('pipeline:verify', (_e, jobId: string, id: string) => stepVerify(jobId, id));
@@ -444,7 +471,11 @@ ipcMain.handle('pipeline:packSkill', (_e, id: string) => lib.setStatus(id, 'skil
 ipcMain.handle('pipeline:cancel', (_e, jobId: string) => { aborts.get(jobId)?.abort(); });
 
 ipcMain.handle('files:selectVideos', async () => {
-  const r = await dialog.showOpenDialog({ properties: ['openFile', 'multiSelections'], filters: [{ name: 'Video', extensions: ['mp4', 'mov', 'webm', 'm4v', 'gif', 'mkv'] }] });
+  const r = await dialog.showOpenDialog({ properties: ['openFile', 'multiSelections'], filters: [{ name: 'Video or reference image', extensions: ['mp4', 'mov', 'webm', 'm4v', 'gif', 'mkv', 'png', 'jpg', 'jpeg', 'webp'] }] });
+  return r.canceled ? [] : r.filePaths;
+});
+ipcMain.handle('files:selectImages', async () => {
+  const r = await dialog.showOpenDialog({ properties: ['openFile', 'multiSelections'], filters: [{ name: 'Image', extensions: ['png', 'jpg', 'jpeg', 'webp'] }] });
   return r.canceled ? [] : r.filePaths;
 });
 ipcMain.handle('shell:showInFinder', (_e, p: string) => shell.showItemInFolder(p));
