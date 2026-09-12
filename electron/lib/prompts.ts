@@ -72,6 +72,7 @@ export const DEMO_CONVENTION = `demo 约定（必须遵守）：
   状态名用 kebab-case，顺序按交互流程；每个 state 函数执行后页面应静止在该状态（等待动画结束后再 resolve）。至少 2 个状态，最多 6 个。
 - 不要依赖真实鼠标位置：hover 类状态用添加 class 或派发 pointer 事件模拟。
 - 不要用 alert/console 噪音。
+- 性能：禁止无条件的 requestAnimationFrame / setInterval 死循环。需要按变量重算几何或路径的，只在变化时做：页面加载时一次、收到 window 上的 "yoink:tweak" 事件（外部改 tweak 时会派发，detail.key 是变了的变量）、以及 pointer/transition 事件期间的短时窗口（几百毫秒后自动停）。静止时页面必须是零 JS、零重绘——backdrop-filter 和 blur 层每帧重画会把 GPU 吃满。
 - Tweaks 约定：把最值得调的参数（时长、缓动/弹簧、颜色、尺寸、阈值，6–14 个）写成 :root 上的 CSS 变量，放在 <style id="yoink-tweaks">:root{ --x: 300ms; ... }</style> 这个独立 style 块里（只放变量，一行一个）。JS 里需要这些数值时用
   const tweak = (k) => getComputedStyle(document.documentElement).getPropertyValue(k).trim();
   在每次用到时现读（不要启动时缓存），这样外部改变量能实时生效。再声明清单：
