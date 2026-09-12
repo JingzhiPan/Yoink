@@ -104,3 +104,18 @@ export async function cropRegion(src: string, outPath: string, r: { x: number; y
   await writeFile(outPath, c.resize({ width: Math.round(box.width * scale) }).toPNG());
   return outPath;
 }
+
+/** Material crops from a user-drawn box: the box at ~2x plus its centre half at ~3x. */
+export async function makeMaterialCropsFrom(frame: string, r: { x: number; y: number; w: number; h: number }, outDir: string, tag: string): Promise<string[]> {
+  const img = nativeImage.createFromPath(frame);
+  if (img.isEmpty()) return [];
+  await mkdir(outDir, { recursive: true });
+  const { width: W, height: H } = img.getSize();
+  const box = { x: Math.round(r.x * W), y: Math.round(r.y * H), width: Math.max(16, Math.round(r.w * W)), height: Math.max(16, Math.round(r.h * H)) };
+  const out: string[] = [];
+  const p1 = path.join(outDir, `${tag}-subject.png`); await writeFile(p1, img.crop(box).resize({ width: Math.min(1800, box.width * 2) }).toPNG()); out.push(p1);
+  const dw = Math.round(box.width * 0.5), dh = Math.round(box.height * 0.5);
+  const detail = img.crop({ x: box.x + Math.round((box.width - dw) / 2), y: box.y + Math.round((box.height - dh) / 2), width: dw, height: dh });
+  const p2 = path.join(outDir, `${tag}-detail.png`); await writeFile(p2, detail.resize({ width: Math.min(1800, dw * 3) }).toPNG()); out.push(p2);
+  return out;
+}

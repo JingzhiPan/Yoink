@@ -17,10 +17,22 @@ export function mdToHtml(md: string): string {
     out.push('<div class="frontmatter">' + fm[1].split('\n').map((l) => { const m = l.match(/^(\w+):\s*(.*)$/); return m ? `<div><b>${esc(m[1])}</b> ${esc(m[2])}</div>` : `<div>${esc(l)}</div>`; }).join('') + '</div>');
   }
   const lines = body.split('\n');
-  let inCode = false, inList: 'ul' | 'ol' | null = null, para: string[] = [];
+  let inCode = false, inList: 'ul' | 'ol' | null = null, para: string[] = [], table: string[][] | null = null;
   const flushP = () => { if (para.length) { out.push(`<p>${inline(para.join(' '))}</p>`); para = []; } };
   const closeList = () => { if (inList) { out.push(`</${inList}>`); inList = null; } };
+  const cells = (l: string) => l.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim());
+  const flushT = () => {
+    if (!table) return;
+    const [head, ...rows] = table;
+    out.push('<div class="tablewrap"><table><thead><tr>' + head.map((c) => `<th>${inline(c)}</th>`).join('') + '</tr></thead><tbody>' + rows.map((r) => '<tr>' + r.map((c) => `<td>${inline(c)}</td>`).join('') + '</tr>').join('') + '</tbody></table></div>');
+    table = null;
+  };
   for (const raw of lines) {
+    if (!inCode && /^\s*\|.*\|\s*$/.test(raw)) {
+      flushP(); closeList();
+      if (/^\s*\|?\s*:?-{2,}/.test(raw)) continue; // header separator
+      (table ??= []).push(cells(raw)); continue;
+    } else flushT();
     if (raw.startsWith('```')) { flushP(); closeList(); if (inCode) out.push('</pre>'); else out.push('<pre>'); inCode = !inCode; continue; }
     if (inCode) { out.push(esc(raw)); continue; }
     const h = raw.match(/^(#{1,4})\s+(.*)/);
@@ -31,7 +43,7 @@ export function mdToHtml(md: string): string {
     if (!raw.trim()) { flushP(); closeList(); continue; }
     closeList(); para.push(raw);
   }
-  flushP(); closeList(); if (inCode) out.push('</pre>');
+  flushP(); closeList(); flushT(); if (inCode) out.push('</pre>');
   return out.join('\n');
 }
 export function Markdown({ text }: { text: string }) {

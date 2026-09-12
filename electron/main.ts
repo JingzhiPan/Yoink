@@ -10,7 +10,7 @@ import { parseSpec, slugify } from './lib/parser.js';
 import { verifyPrompt, demoPrompt, feedbackPrompt, comparePrompt, skillPrompt, computerUsePrompt, consolidatePrompt, tweaksPrompt, retagPrompt, materialPrompt } from './lib/prompts.js';
 import { screenshotDemo } from './lib/screenshot.js';
 import { parseWithOpenAI } from './lib/openai.js';
-import { makeCover, coverPath, makeMaterialCrops, cropRegion } from './lib/cover.js';
+import { makeCover, coverPath, makeMaterialCrops, makeMaterialCropsFrom, cropRegion } from './lib/cover.js';
 import * as lib from './lib/library.js';
 import type { PatternMeta, Settings, JobEvent, JobKind, InputMethod, Category, Complexity, TagFacets, JudgmentItem } from '../shared/types.js';
 
@@ -324,17 +324,19 @@ async function stepSkill(jobId: string, id: string): Promise<PatternMeta> {
 }
 
 /** Material pass: zoomed crops of two frames → layer stack into spec.md + the human-judgment list. */
-async function stepMaterial(jobId: string, id: string): Promise<PatternMeta> {
+type Pick = { frame: string; rect: { x: number; y: number; w: number; h: number } };
+async function stepMaterial(jobId: string, id: string, picks: Pick[] = []): Promise<PatternMeta> {
   return runJob(jobId, id, 'material', async (log, signal) => {
     const d = await lib.getPattern(id);
     if (!d.spec || !d.frames.length) throw new Error('需要先有核对过的 spec 和关键帧');
     log('裁放大图…');
     const n = d.frames.length;
-    const picks = [...new Set([Math.floor(n * 0.3), Math.floor(n * 0.7)])].map((i) => d.frames[Math.min(n - 1, i)]);
+    const autoPicks = [...new Set([Math.floor(n * 0.3), Math.floor(n * 0.7)])].map((i) => d.frames[Math.min(n - 1, i)]);
     const { rm } = await import('node:fs/promises');
     await rm(path.join(d.dir, 'material'), { recursive: true, force: true });
     const crops: string[] = [];
-    for (const [i, f] of picks.entries()) crops.push(...await makeMaterialCrops(f, path.join(d.dir, 'material'), `crop-${i + 1}-${path.basename(f, '.png')}`));
+    if (picks.length) for (const [i, p] of picks.entries()) crops.push(...await makeMaterialCropsFrom(p.frame, p.rect, path.join(d.dir, 'material'), `crop-${i + 1}-${path.basename(p.frame, '.png')}`));
+    else for (const [i, f] of autoPicks.entries()) crops.push(...await makeMaterialCrops(f, path.join(d.dir, 'material'), `crop-${i + 1}-${path.basename(f, '.png')}`));
     log('Claude 正在拆材质层栈、列待判定问题…');
     const out = await runClaude({ prompt: materialPrompt(d.spec, crops, d.frames), cwd: d.dir, allowedTools: ['Read'], onLog: log, signal });
     const md = out.match(/```(?:markdown|md)\s*([\s\S]*?)```/i)?.[1]?.trim();
@@ -424,7 +426,7 @@ ipcMain.handle('pipeline:verify', (_e, jobId: string, id: string) => stepVerify(
 ipcMain.handle('pipeline:demo', (_e, jobId: string, id: string) => stepDemo(jobId, id));
 ipcMain.handle('pipeline:screenshot', (_e, jobId: string, id: string, compare: boolean) => stepScreenshot(jobId, id, compare));
 ipcMain.handle('pipeline:feedback', (_e, jobId: string, id: string, fb: string, variant?: string, crop?: string) => stepFeedback(jobId, id, fb, variant, crop));
-ipcMain.handle('pipeline:material', (_e, jobId: string, id: string) => stepMaterial(jobId, id));
+ipcMain.handle('pipeline:material', (_e, jobId: string, id: string, picks?: Pick[]) => stepMaterial(jobId, id, picks ?? []));
 ipcMain.handle('judgment:save', (_e, id: string, items: JudgmentItem[]) => lib.saveJudgment(id, items));
 ipcMain.handle('frame:crop', async (_e, id: string, frame: string, r: { x: number; y: number; w: number; h: number }) => {
   const d = await lib.getPattern(id);

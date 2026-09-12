@@ -5,6 +5,7 @@ import { Gallery, MetaEditor } from './common';
 import { Markdown } from './Markdown';
 import { JobLog } from './JobLog';
 import { Judgment } from './Judgment';
+import { RegionPicker } from './RegionPicker';
 
 export function SpecTab({ d }: { d: PatternDetail }) {
   const { storeRaw, verify, saveSpec, updateMeta, material, saveJudgment } = useStore();
@@ -16,6 +17,7 @@ export function SpecTab({ d }: { d: PatternDetail }) {
   const [spec, setSpec] = useState(d.spec ?? '');
   const [editing, setEditing] = useState(false);
   const [showRaw, setShowRaw] = useState(false);
+  const [matPick, setMatPick] = useState(false);
   useEffect(() => { setSpec(d.spec ?? ''); }, [d.spec]);
   const dirty = spec !== (d.spec ?? '');
   const id = d.meta.id;
@@ -54,7 +56,7 @@ export function SpecTab({ d }: { d: PatternDetail }) {
               </>) : (<>
                 <button className="sm" onClick={() => setShowRaw(!showRaw)}>{showRaw ? '看当前' : (d.specVerified ? '看核对长版' : '看原始')}</button>
                 <button className="sm" disabled={running} onClick={() => verify(id)} title="用当前原始 spec 重新核对">重新核对</button>
-                <button className="sm" disabled={running} onClick={() => material(id)} title="裁两张放大图，让 Claude 拆材质层栈，并列出只有你能定的问题">{d.judgment ? '重做材质拆解' : '材质拆解 + 待判定'}</button>
+                <button className="sm" disabled={running} onClick={() => setMatPick(true)} title="先框出主体，Claude 看放大图拆材质层栈，并列出只有你能定的问题">{d.judgment ? '重做材质拆解' : '材质拆解 + 待判定'}</button>
                 {d.demoIndex && <button className="sm" disabled={running} onClick={() => useStore.getState().confirmDemo(id)} title="把 demo 反馈记录和最终代码合并回 spec，并精简">精简 spec</button>}
                 <button className="sm" onClick={() => setEditing(true)}>编辑</button>
               </>)}
@@ -64,6 +66,7 @@ export function SpecTab({ d }: { d: PatternDetail }) {
           </>
         )}
         {d.spec && !d.judgment && !running && <div className="callout">下一步建议先做「材质拆解 + 待判定」：Claude 看放大图拆出高光/雾面/边缘的层栈，再把它判断不了的问题列给你。这一步能省掉后面大部分反馈轮次。</div>}
+        {matPick && <RegionPicker frames={d.frames} onClose={() => setMatPick(false)} onPick={() => {}} multi={{ title: '框出要拆材质的主体', sub: '选一帧，框住那个元素（比如一张卡）。最多三块；录屏里有代码编辑器之类的东西就别框进去。', onDone: (picks) => { setMatPick(false); material(id, picks); } }} />}
         {d.judgment && <Judgment items={d.judgment} frames={d.frames} onSave={(items) => saveJudgment(id, items)} />}
         {d.materialCrops.length > 0 && (<><h3>材质放大图 · {d.materialCrops.length}</h3><Gallery files={d.materialCrops} /></>)}
         <JobLog job={job} />

@@ -316,3 +316,9 @@ a { color: var(--terra); }
 .points-label { position: absolute; left: 10px; bottom: 10px; background: rgba(43,38,34,.82); color: #fbf8f3; font-size: 12px; padding: 4px 10px; border-radius: 999px; pointer-events: none; }
 .points-hint { position: absolute; left: 10px; bottom: 10px; z-index: 5; background: rgba(43,38,34,.82); color: #fbf8f3; font-size: 12px; padding: 4px 10px; border-radius: 999px; }
 .tweak.v button.on { background: var(--peach); border-color: var(--terra); color: var(--terra); }
+
+.md .tablewrap { overflow-x: auto; margin: 8px 0; }
+.md table { border-collapse: collapse; font-size: 12.5px; line-height: 1.45; min-width: 100%; }
+.md th, .md td { border: 1px solid var(--line); padding: 5px 8px; vertical-align: top; text-align: left; }
+.md th { background: #f3eee6; font-weight: 600; white-space: nowrap; }
+.md td { min-width: 90px; }

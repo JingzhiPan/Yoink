@@ -4,7 +4,10 @@ import { api } from '../api';
 type Rect = { x: number; y: number; w: number; h: number };
 
 /** Pick a frame, drag a box on it; the crop gets attached to the next feedback so Claude compares against pixels, not prose. */
-export function RegionPicker({ frames, onClose, onPick }: { frames: string[]; onClose: () => void; onPick: (frame: string, r: Rect) => void }) {
+type PickItem = { frame: string; rect: Rect };
+
+export function RegionPicker({ frames, onClose, onPick, multi }: { frames: string[]; onClose: () => void; onPick: (frame: string, r: Rect) => void; multi?: { title: string; sub: string; onDone: (picks: PickItem[]) => void } }) {
+  const [picks, setPicks] = useState<PickItem[]>([]);
   const [frame, setFrame] = useState(frames[Math.floor(frames.length / 2)] ?? frames[0]);
   const [rect, setRect] = useState<Rect | null>(null);
   const [drag, setDrag] = useState<{ x: number; y: number } | null>(null);
@@ -14,8 +17,8 @@ export function RegionPicker({ frames, onClose, onPick }: { frames: string[]; on
   return (
     <div className="modal-bg" onClick={onClose}>
       <div className="modal picker" onClick={(e) => e.stopPropagation()}>
-        <h2>框一块原图给 Claude 对照</h2>
-        <p className="sub">选一帧，在图上拖出区域。会放大裁下来，连同你的文字一起发。</p>
+        <h2>{multi ? multi.title : '框一块原图给 Claude 对照'}</h2>
+        <p className="sub">{multi ? multi.sub : '选一帧，在图上拖出区域。会放大裁下来，连同你的文字一起发。'}</p>
         <div className="strip">
           {frames.map((f) => <figure key={f} className={f === frame ? 'on' : ''} onClick={() => { setFrame(f); setRect(null); }}><img src={api.fileUrl(f)} alt="" loading="lazy" /></figure>)}
         </div>
@@ -27,9 +30,13 @@ export function RegionPicker({ frames, onClose, onPick }: { frames: string[]; on
           {rect && rect.w > 0 && <div className="pick-rect" style={{ left: `${rect.x * 100}%`, top: `${rect.y * 100}%`, width: `${rect.w * 100}%`, height: `${rect.h * 100}%` }} />}
         </div>
         <div className="row" style={{ marginTop: 12 }}>
+          {multi && picks.length > 0 && <span className="hint">已框 {picks.length} 块：{picks.map((p) => p.frame.split('/').pop()).join('、')}</span>}
           <span className="spacer" />
           <button onClick={onClose}>取消</button>
-          <button className="primary" disabled={!rect || rect.w < 0.02 || rect.h < 0.02} onClick={() => rect && onPick(frame, rect)}>附到反馈</button>
+          {multi ? (<>
+            <button disabled={!rect || rect.w < 0.02 || rect.h < 0.02 || picks.length >= 3} onClick={() => { if (rect) { setPicks([...picks, { frame, rect }]); setRect(null); } }}>加入这块，再框一块</button>
+            <button className="primary" disabled={picks.length === 0 && !(rect && rect.w >= 0.02 && rect.h >= 0.02)} onClick={() => multi.onDone(rect && rect.w >= 0.02 && rect.h >= 0.02 ? [...picks, { frame, rect }] : picks)}>开始拆解</button>
+          </>) : <button className="primary" disabled={!rect || rect.w < 0.02 || rect.h < 0.02} onClick={() => rect && onPick(frame, rect)}>附到反馈</button>}
         </div>
       </div>
     </div>

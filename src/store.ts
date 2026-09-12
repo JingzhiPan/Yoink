@@ -32,7 +32,7 @@ interface State {
   generateDemo(id: string): Promise<void>;
   screenshot(id: string, compare: boolean): Promise<void>;
   feedback(id: string, text: string, variant?: string, crop?: string): Promise<void>;
-  material(id: string): Promise<void>;
+  material(id: string, picks?: { frame: string; rect: { x: number; y: number; w: number; h: number } }[]): Promise<void>;
   saveJudgment(id: string, items: JudgmentItem[]): Promise<void>;
   retag(id: string): Promise<void>;
   updateVariant(id: string, slug: string, patch: Record<string, unknown>): Promise<void>;
@@ -122,7 +122,7 @@ export const useStore = create<State>((set, get) => {
     generateDemo: (id) => wrap(id, 'demo', (j) => api.generateDemo(j, id)),
     screenshot: (id, compare) => wrap(id, 'screenshot', (j) => api.screenshotDemo(j, id, compare)),
     feedback: (id, text, variant, crop) => wrap(id, 'feedback', (j) => api.sendFeedback(j, id, text, variant, crop), variant),
-    material: (id) => wrap(id, 'material', (j) => api.material(j, id)),
+    material: (id, picks) => wrap(id, 'material', (j) => api.material(j, id, picks)),
     async saveJudgment(id, items) { await api.saveJudgment(id, items); await afterStep(id); },
     retag: (id) => wrap(id, 'retag', (j) => api.retag(j, id)),
     async updateVariant(id, slug, patch) { await api.updateVariant(id, slug, patch); await afterStep(id); },
