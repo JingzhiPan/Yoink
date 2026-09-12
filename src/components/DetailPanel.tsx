@@ -5,10 +5,11 @@ import { StatusBadge } from './common';
 import { SpecTab } from './SpecTab';
 import { DemoTab } from './DemoTab';
 import { SkillTab } from './SkillTab';
+import { HandoffTab } from './HandoffTab';
 import { I } from './icons';
 import { api } from '../api';
 
-type Tab = 'spec' | 'demo' | 'skill';
+type Tab = 'spec' | 'demo' | 'skill' | 'handoff';
 
 export function DetailPanel() {
   const d = useStore((s) => s.current);
@@ -48,10 +49,12 @@ export function DetailPanel() {
         <button className={tab === 'spec' ? 'on' : ''} onClick={() => setTab('spec')}>Spec</button>
         <button className={tab === 'demo' ? 'on' : ''} disabled={!hasSpec} onClick={() => setTab('demo')}>Demo</button>
         <button className={tab === 'skill' ? 'on' : ''} disabled={!skillUnlocked} onClick={() => setTab('skill')} title={skillUnlocked ? '' : '确认 demo 后解锁'}>Skill</button>
+        <button className={tab === 'handoff' ? 'on' : ''} disabled={!hasSpec} onClick={() => setTab('handoff')} title="给接手的设计师/工程师看的一页">交接</button>
       </div>
       {tab === 'spec' && <SpecTab d={d} />}
       {tab === 'demo' && <DemoTab d={d} />}
       {tab === 'skill' && <SkillTab d={d} />}
+      {tab === 'handoff' && <HandoffTab d={d} />}
       <div className="actions">
         <button onClick={() => api.showInFinder(d.skillMd ? `${d.dir}/skill` : d.dir)}>{I.pencil} Open in Finder</button>
         <button className="primary" disabled={!skillUnlocked} onClick={() => setTab('skill')}>View Skill →</button>

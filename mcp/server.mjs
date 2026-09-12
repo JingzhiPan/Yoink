@@ -77,6 +77,15 @@ server.registerTool('get_demo_screenshots', {
   inputSchema: { pattern_id: z.string() },
 }, async ({ pattern_id }) => text(await pngs(path.join(dir(pattern_id), 'demo-screenshots'))));
 
+server.registerTool('get_handoff', {
+  description: 'Return the handoff page of a pattern: what the video proves (core rule, material layer stack), what the user decided (do not "fix" these back), what is still undecided, craft details, and the list of tunable CSS variables in the demo. Read this before modifying or reusing a pattern.',
+  inputSchema: { pattern_id: z.string() },
+}, async ({ pattern_id }) => {
+  const p = path.join(dir(pattern_id), 'handoff.md');
+  if (!existsSync(p)) return fail(`pattern ${pattern_id} has no handoff yet (open it in YOINK once)`);
+  return text(await readFile(p, 'utf8'));
+});
+
 server.registerTool('get_skill', {
   description: 'Return the packaged skill: SKILL.md content plus absolute paths of the reusable component code. Only available when status is skill_ready (or demo_done with a generated skill).',
   inputSchema: { pattern_id: z.string() },

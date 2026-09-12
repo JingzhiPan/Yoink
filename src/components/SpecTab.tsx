@@ -4,9 +4,10 @@ import { useStore, runningJobsFor, latestJobFor } from '../store';
 import { Gallery, MetaEditor } from './common';
 import { Markdown } from './Markdown';
 import { JobLog } from './JobLog';
+import { Judgment } from './Judgment';
 
 export function SpecTab({ d }: { d: PatternDetail }) {
-  const { storeRaw, verify, saveSpec, updateMeta } = useStore();
+  const { storeRaw, verify, saveSpec, updateMeta, material, saveJudgment } = useStore();
   const jobs = useStore((s) => s.jobs);
   const settings = useStore((s) => s.settings);
   const running = runningJobsFor(jobs, d.meta.id).length > 0;
@@ -53,6 +54,7 @@ export function SpecTab({ d }: { d: PatternDetail }) {
               </>) : (<>
                 <button className="sm" onClick={() => setShowRaw(!showRaw)}>{showRaw ? '看当前' : (d.specVerified ? '看核对长版' : '看原始')}</button>
                 <button className="sm" disabled={running} onClick={() => verify(id)} title="用当前原始 spec 重新核对">重新核对</button>
+                <button className="sm" disabled={running} onClick={() => material(id)} title="裁两张放大图，让 Claude 拆材质层栈，并列出只有你能定的问题">{d.judgment ? '重做材质拆解' : '材质拆解 + 待判定'}</button>
                 {d.demoIndex && <button className="sm" disabled={running} onClick={() => useStore.getState().confirmDemo(id)} title="把 demo 反馈记录和最终代码合并回 spec，并精简">精简 spec</button>}
                 <button className="sm" onClick={() => setEditing(true)}>编辑</button>
               </>)}
@@ -61,6 +63,9 @@ export function SpecTab({ d }: { d: PatternDetail }) {
               : <Markdown text={showRaw ? (d.specVerified ?? d.rawSpec ?? '') : d.spec} />}
           </>
         )}
+        {d.spec && !d.judgment && !running && <div className="callout">下一步建议先做「材质拆解 + 待判定」：Claude 看放大图拆出高光/雾面/边缘的层栈，再把它判断不了的问题列给你。这一步能省掉后面大部分反馈轮次。</div>}
+        {d.judgment && <Judgment items={d.judgment} frames={d.frames} onSave={(items) => saveJudgment(id, items)} />}
+        {d.materialCrops.length > 0 && (<><h3>材质放大图 · {d.materialCrops.length}</h3><Gallery files={d.materialCrops} /></>)}
         <JobLog job={job} />
         <h3>Key Frames · {d.frames.length}</h3>
         <Gallery files={d.frames} />

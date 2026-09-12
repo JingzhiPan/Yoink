@@ -281,3 +281,38 @@ a { color: var(--terra); }
   95%  { transform: translateX(0) scaleX(1); }
   100% { transform: translateX(0) scaleX(-1); }
 }
+
+/* judgment list */
+.judgment { display: flex; flex-direction: column; gap: 8px; }
+.judgment .row .hint { font-style: italic; }
+.jitem { border: 1px solid var(--line); border-radius: 10px; background: var(--card); padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+.jitem.done { border-color: #cfe3d5; background: #f3f8f4; }
+.jq { font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.jkind { font-family: var(--mono); font-size: 10.5px; font-weight: 500; color: var(--terra); background: var(--pill); border-radius: 4px; padding: 1px 6px; white-space: nowrap; }
+.jopts { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.jopts button.on { background: var(--peach); border-color: var(--terra); color: var(--terra); }
+.jopts input { flex: 1; min-width: 160px; padding: 4px 8px; font-size: 12.5px; }
+.jmeta { font-size: 12px; color: var(--ink2); display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+
+/* region picker */
+.modal.picker { width: 860px; }
+.modal.picker .strip figure.on { border-color: var(--terra); box-shadow: 0 0 0 1px var(--terra); }
+.pick-area { position: relative; margin-top: 10px; user-select: none; cursor: crosshair; border-radius: 8px; overflow: hidden; background: var(--cover); }
+.pick-area img { width: 100%; display: block; pointer-events: none; }
+.pick-rect { position: absolute; border: 1.5px solid var(--terra); background: rgba(193,85,45,.12); box-shadow: 0 0 0 9999px rgba(43,38,34,.35); pointer-events: none; }
+.chat-side { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+.crop-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink2); border: 1px solid var(--line); border-radius: 8px; padding: 3px 6px; background: var(--card); }
+.crop-chip img { width: 36px; height: 24px; object-fit: cover; border-radius: 4px; }
+.crop-chip button { padding: 0 4px; }
+
+/* points overlay */
+.frame-col { position: relative; min-width: 0; }
+.points-overlay { position: absolute; inset: 0; z-index: 5; }
+.points-box { position: absolute; border: 1px dashed rgba(193,85,45,.7); pointer-events: none; }
+.points-poly { position: absolute; inset: 0; pointer-events: none; }
+.points-poly polygon { fill: rgba(193,85,45,.12); stroke: var(--terra); stroke-width: 1; }
+.point { position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: #fff; border: 2px solid var(--terra); cursor: grab; box-shadow: 0 1px 4px rgba(0,0,0,.3); }
+.point:active { cursor: grabbing; }
+.points-label { position: absolute; left: 10px; bottom: 10px; background: rgba(43,38,34,.82); color: #fbf8f3; font-size: 12px; padding: 4px 10px; border-radius: 999px; pointer-events: none; }
+.points-hint { position: absolute; left: 10px; bottom: 10px; z-index: 5; background: rgba(43,38,34,.82); color: #fbf8f3; font-size: 12px; padding: 4px 10px; border-radius: 999px; }
+.tweak.v button.on { background: var(--peach); border-color: var(--terra); color: var(--terra); }

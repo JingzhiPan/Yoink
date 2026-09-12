@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
-import type { PatternMeta, PatternDetail, Settings, JobEvent, InputMethod, DemoVariant } from '../shared/types.js';
+import type { PatternMeta, PatternDetail, Settings, JobEvent, InputMethod, DemoVariant, JudgmentItem } from '../shared/types.js';
 
 const api = {
   getSettings: (): Promise<Settings> => ipcRenderer.invoke('settings:get'),
@@ -26,7 +26,10 @@ const api = {
   verify: (jobId: string, id: string): Promise<PatternMeta> => ipcRenderer.invoke('pipeline:verify', jobId, id),
   generateDemo: (jobId: string, id: string): Promise<PatternMeta> => ipcRenderer.invoke('pipeline:demo', jobId, id),
   screenshotDemo: (jobId: string, id: string, compare: boolean): Promise<PatternMeta> => ipcRenderer.invoke('pipeline:screenshot', jobId, id, compare),
-  sendFeedback: (jobId: string, id: string, fb: string, variant?: string): Promise<PatternMeta> => ipcRenderer.invoke('pipeline:feedback', jobId, id, fb, variant),
+  sendFeedback: (jobId: string, id: string, fb: string, variant?: string, crop?: string): Promise<PatternMeta> => ipcRenderer.invoke('pipeline:feedback', jobId, id, fb, variant, crop),
+  material: (jobId: string, id: string): Promise<PatternMeta> => ipcRenderer.invoke('pipeline:material', jobId, id),
+  saveJudgment: (id: string, items: JudgmentItem[]): Promise<void> => ipcRenderer.invoke('judgment:save', id, items),
+  cropFrame: (id: string, frame: string, r: { x: number; y: number; w: number; h: number }): Promise<string> => ipcRenderer.invoke('frame:crop', id, frame, r),
   retag: (jobId: string, id: string): Promise<PatternMeta> => ipcRenderer.invoke('pipeline:retag', jobId, id),
   updateVariant: (id: string, slug: string, patch: Record<string, unknown>): Promise<void> => ipcRenderer.invoke('variant:update', id, slug, patch),
   confirmDemo: (jobId: string, id: string): Promise<PatternMeta> => ipcRenderer.invoke('pipeline:confirmDemo', jobId, id),

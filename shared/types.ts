@@ -54,12 +54,23 @@ export interface PatternDetail {
   specVerified: string | null; // long verified version kept after consolidation
   demoIndex: string | null;    // absolute path to demo/index.html
   demoCompare: string | null;  // demo-compare.md
+  judgment: JudgmentItem[] | null;   // judgment.json: things only a human can decide
+  materialCrops: string[];           // material/*.png zoomed crops used by the material pass
+  consolidateDiff: string | null;    // consolidate-diff.md: what the demo rounds changed vs the verified spec
+  handoff: string | null;            // handoff.md: facts / decisions / open / tweaks, built from the files above
+  tweakList: TweakInfo[];            // parsed from demo/index.html manifest
   comparePairs: ComparePair[] | null; // demo-compare.json: which original frame each demo shot corresponds to
   skillMd: string | null;
   skillFiles: string[];        // relative paths inside skill/
   feedbackLog: string | null;  // demo-feedback.md
   variants: DemoVariant[];     // saved demo snapshots under variants/
 }
+
+export type JudgmentKind = 'aesthetic' | 'shape' | 'mechanism' | 'ownership';
+export const JUDGMENT_KIND_LABEL: Record<JudgmentKind, string> = { aesthetic: '审美意图', shape: '形状', mechanism: '机制二选一', ownership: '归属' };
+/** One thing the frames can't settle; the designer answers it before/after the demo. */
+export interface JudgmentItem { id: string; kind: JudgmentKind; q: string; options: string[]; frame: string; where: string; verify: string; answer: string }
+export interface TweakInfo { key: string; label: string; type: string; unit?: string }
 
 export interface ComparePair { shot: string; frame: string | null; note: string }
 
@@ -73,7 +84,7 @@ export interface Settings {
   ffmpegPath: string | null;
 }
 
-export type JobKind = 'extract' | 'parse' | 'verify' | 'demo' | 'screenshot' | 'feedback' | 'consolidate' | 'tweaks' | 'skill' | 'retag';
+export type JobKind = 'extract' | 'parse' | 'verify' | 'demo' | 'screenshot' | 'feedback' | 'consolidate' | 'tweaks' | 'skill' | 'retag' | 'material';
 
 export interface JobEvent {
   jobId: string;

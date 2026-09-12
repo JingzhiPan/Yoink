@@ -1,5 +1,5 @@
 import { nativeImage } from 'electron';
-import { writeFile } from 'node:fs/promises';
+import { writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 
 /**
@@ -55,3 +55,52 @@ export async function makeCover(candidates: string[], outPath: string): Promise<
 
 function bump(m: Map<string, number>, c: number[]) { const k = c.map((v) => Math.round(v / 16) * 16).join(','); m.set(k, (m.get(k) ?? 0) + 1); }
 export const coverPath = (dir: string) => path.join(dir, 'cover.png');
+
+/** Bounding box of the subject (non-background pixels), same heuristic as the cover. */
+function subjectBox(img: Electron.NativeImage) {
+  const { width: W, height: H } = img.getSize();
+  const buf = img.toBitmap();
+  const px = (x: number, y: number) => { const i = (y * W + x) * 4; return [buf[i + 2], buf[i + 1], buf[i]]; };
+  const counts = new Map<string, number>();
+  const step = Math.max(1, Math.floor(Math.max(W, H) / 200));
+  for (let x = 0; x < W; x += step) for (const y of [0, H - 1]) bump(counts, px(x, y));
+  for (let y = 0; y < H; y += step) for (const x of [0, W - 1]) bump(counts, px(x, y));
+  const bg = [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0].split(',').map(Number);
+  const isBg = (c: number[]) => Math.abs(c[0] - bg[0]) + Math.abs(c[1] - bg[1]) + Math.abs(c[2] - bg[2]) < 40;
+  let minX = W, minY = H, maxX = -1, maxY = -1;
+  const s = Math.max(1, Math.floor(Math.max(W, H) / 400));
+  for (let y = 0; y < H; y += s) for (let x = 0; x < W; x += s) if (!isBg(px(x, y))) { if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y; }
+  if (maxX <= minX || maxY <= minY) return { x: 0, y: 0, width: W, height: H };
+  const pad = 12;
+  return { x: Math.max(0, minX - pad), y: Math.max(0, minY - pad), width: Math.min(W, maxX + pad) - Math.max(0, minX - pad), height: Math.min(H, maxY + pad) - Math.max(0, minY - pad) };
+}
+
+/**
+ * Zoomed crops for the material pass: the whole subject at ~2x, plus its centre half at ~3x.
+ * Claude's image reading sees far more layering in a 1600px crop of a card than in a 960px full frame.
+ */
+export async function makeMaterialCrops(frame: string, outDir: string, tag: string): Promise<string[]> {
+  const img = nativeImage.createFromPath(frame);
+  if (img.isEmpty()) return [];
+  await mkdir(outDir, { recursive: true });
+  const box = subjectBox(img);
+  const out: string[] = [];
+  const subject = img.crop(box).resize({ width: Math.min(1800, box.width * 2) });
+  const p1 = path.join(outDir, `${tag}-subject.png`); await writeFile(p1, subject.toPNG()); out.push(p1);
+  const dw = Math.round(box.width * 0.5), dh = Math.round(box.height * 0.5);
+  const detail = img.crop({ x: box.x + Math.round((box.width - dw) / 2), y: box.y + Math.round((box.height - dh) / 2), width: dw, height: dh }).resize({ width: Math.min(1800, dw * 3) });
+  const p2 = path.join(outDir, `${tag}-detail.png`); await writeFile(p2, detail.toPNG()); out.push(p2);
+  return out;
+}
+
+/** Crop a user-drawn region (fractions of the image) and upscale it so small details survive. */
+export async function cropRegion(src: string, outPath: string, r: { x: number; y: number; w: number; h: number }): Promise<string> {
+  const img = nativeImage.createFromPath(src);
+  const { width: W, height: H } = img.getSize();
+  const box = { x: Math.round(r.x * W), y: Math.round(r.y * H), width: Math.max(8, Math.round(r.w * W)), height: Math.max(8, Math.round(r.h * H)) };
+  const c = img.crop(box);
+  const scale = Math.min(4, Math.max(1, 1200 / box.width));
+  await mkdir(path.dirname(outPath), { recursive: true });
+  await writeFile(outPath, c.resize({ width: Math.round(box.width * scale) }).toPNG());
+  return outPath;
+}

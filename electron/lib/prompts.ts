@@ -1,4 +1,4 @@
-import type { PatternMeta } from '../../shared/types.js';
+import type { PatternMeta, JudgmentItem } from '../../shared/types.js';
 
 export const TAG_RULES = `标签规则（严格）：一共 4–6 个英文 kebab-case 标签，按下面五个维度各选最多一个，宁缺毋滥：
 - what：这是个什么东西（slider / card-deck / radial-menu / folder / toggle / modal …）
@@ -60,14 +60,25 @@ export const DEMO_CONVENTION = `demo 约定（必须遵守）：
   const tweak = (k) => getComputedStyle(document.documentElement).getPropertyValue(k).trim();
   在每次用到时现读（不要启动时缓存），这样外部改变量能实时生效。再声明清单：
   window.__yoink.tweaks = [{ key: "--x", label: "展开时长", type: "range", min: 100, max: 1200, step: 10, unit: "ms" }, { key: "--accent", label: "主色", type: "color" }, ...]
-  type 只有 range / color / text；range 的值写成 数字+unit（unit 可为空）。`;
+  type 有 range / color / text / points；range 的值写成 数字+unit（unit 可为空）。
+  points 用于形状：值是 "x% y%, x% y%, ..." 这样的点列（相对某个元素的百分比坐标），CSS 里直接 clip-path: polygon(var(--k)) 或按点位计算；清单项要带 target: "<该元素的 CSS 选择器>"，外部会在 demo 上叠出可拖的手柄。凡是"这块高光/雾面/光带的形状、跨度、角点"这类用语言说不清的东西，一律做成 points，不要让人用文字描述形状。`;
 
-export function demoPrompt(spec: string, frames: string[]): string {
+export function judgmentBlock(items: JudgmentItem[] | null): string {
+  if (!items?.length) return '';
+  const done = items.filter((j) => j.answer.trim()), open = items.filter((j) => !j.answer.trim());
+  const L: string[] = [];
+  if (done.length) L.push('用户已经判定的（这是决定，不是猜测，照做）：', ...done.map((j) => `- ${j.q} → ${j.answer}`));
+  if (open.length) L.push('用户还没判定的（按第一个候选做，但在代码里把它做成一个明显可切换/可调的开关或 tweak，并在回复里点名）：', ...open.map((j) => `- ${j.q}  候选：${j.options.join(' / ')}`));
+  return L.join('\n') + '\n';
+}
+
+export function demoPrompt(spec: string, frames: string[], judgment: JudgmentItem[] | null = null, crops: string[] = []): string {
   return `根据下面这份经过验证的 UI 交互 spec，在当前目录写出一个可运行的 working demo。先用 Read 看关键帧（原始视频抽出来的）以对齐视觉细节，再写代码。
 
 关键帧：
 ${frames.map((f) => `- ${f}`).join('\n')}
-
+${crops.length ? `\n材质放大图（看材质、高光、边缘时以这些为准，比整帧清楚得多）：\n${crops.map((f) => `- ${f}`).join('\n')}\n` : ''}
+${judgmentBlock(judgment)}
 ${DEMO_CONVENTION}
 
 用 Write 工具写文件到 demo/index.html（相对当前目录）。写完后简短总结你实现了哪些状态。
@@ -78,9 +89,13 @@ ${spec}
 SPEC`;
 }
 
-export function feedbackPrompt(feedback: string, history: string, spec: string, file = 'demo/index.html'): string {
+export function feedbackPrompt(feedback: string, history: string, spec: string, file = 'demo/index.html', crop?: string, shot?: string): string {
   return `当前目录下 ${file} 是根据 spec 生成的 UI 交互 demo${file !== 'demo/index.html' ? '（这是一个独立分支方案，只改这个文件，不要碰 demo/index.html）' : ''}。用户看过效果后给出反馈，请用 Read 读取 ${file}，按反馈用 Edit 修改（保持 window.__yoink.states 约定不变，如需可增删状态）。改完一句话说明改了什么。
-
+${crop ? `
+用户从原始视频帧上框了一块放大图作为对照：${crop}
+${shot ? `demo 当前最接近的状态截图：${shot}` : ''}
+先 Read 放大图${shot ? '和截图' : ''}，逐层说出你在原图那块看到的东西（形状、位置、软硬、方向、浓淡、叠加方式）和 demo 里对应实现的差别，再改。用户的文字是指方向，图才是标准。
+` : ''}
 用户这次的反馈：
 ${feedback}
 
@@ -182,24 +197,42 @@ PROMPT
 6. 最终只输出 ChatGPT 的回答正文，用 \`\`\`markdown 围栏包裹，从 "# " 标题开始到 Tags 结束，不加任何你自己的评论。`;
 }
 
-export function consolidatePrompt(spec: string, feedback: string): string {
+export function consolidatePrompt(spec: string, feedback: string, judgment: JudgmentItem[] | null = null): string {
   return `demo 已经被用户确认。请把 spec 重写成最终精简版，给以后要复用这个效果的工程师（和 Claude Code）看。
 
 输入：
 1. 当前 spec.md（逐帧核对版，偏长，含很多测量和"帧中不可判断"的备注）
 2. demo-feedback.md（用户看了 demo 后提出的校正，以及每次的修改说明）——这是最高优先级的事实来源，用户纠正过的行为必须写进 spec，并覆盖与之矛盾的旧描述
 3. demo/index.html（最终代码，用 Read 读取）——实际实现的参数、时长、缓动以代码为准
+4. 用户对"待判定"问题的回答（下面）
 
-要求：
+分两步，两步都要输出：
+
+第一步：先写一份 diff，用 \`\`\`diff-md 围栏包裹（是 Markdown，不是 diff 语法），三节：
+## 被推翻的
+- 核对版里哪些描述被反馈或最终代码否定了（原话 → 现在的认识）
+## 新发现的
+- 核对版完全没提、在改 demo 过程中才认识到的东西（材质层、机制、归属……）
+## 用户决定的
+- 视频证明不了、是用户拍板的选择（例如两种翻转版本都能对上帧，用户选了 B）
+
+第二步：按这份 diff **重写全文**，不是在旧文后面追加。硬性要求：
+- Overview 和 Core Principle 必须反映 diff 里的每一条"被推翻"和"新发现"。如果用户在过程中给出了整体定性的话（比如"像塑料薄片，中间略鼓，四边压平"），那句话就该出现在 Overview 里。检查方法：Craft Details 里出现的每一类东西（材质/高光/翻转/堆叠……），Overview 里都要有一句对应的话。
+- "用户决定的"单独成一节 ## Design Decisions，放在 Craft Details 之前，每条写清楚：决定是什么、另一个候选是什么、为什么不能当视频事实。
+- 长度压到原 spec 的 1/3 左右。删掉像素级测量、重复描述、Verification Notes、"估计"的免责声明、无关的 app 外壳描述。
+- 保留：效果是什么、有哪些状态、每个交互怎么动、所有边界时刻的行为、技术方案和关键参数。已有的 ## Material Layers 一节按最终代码修订后保留。
+- 数值只保留代码里实际用到的关键值。
+
+其他要求：
 - 长度压到原 spec 的 1/3 左右。删掉像素级测量、重复描述、Verification Notes、"估计"的免责声明、无关的 app 外壳描述。
 - 保留：效果是什么、有哪些状态、每个交互怎么动、所有边界时刻的行为（元素相遇/到达极值/出现消失）、技术方案和关键参数。
 - 数值只保留代码里实际用到的关键值（尺寸、时长、缓动、颜色），不要帧测量。
 - 用户校正过的行为单独成一节"## Craft Details"，每条一句话讲清楚。
 
 ${SPEC_FORMAT_HINT}
-（在 Technical Approach 之后、Tags 之前加 ## Craft Details）
+（在 Technical Approach 之后加 ## Design Decisions 和 ## Craft Details，再 Tags）
 
-只输出 spec Markdown，用 \`\`\`markdown 围栏包裹。
+先输出 \`\`\`diff-md 围栏，再输出 spec Markdown（\`\`\`markdown 围栏）。
 
 当前 spec：
 <<<SPEC
@@ -209,7 +242,9 @@ SPEC
 用户反馈记录：
 <<<FEEDBACK
 ${feedback || '（无）'}
-FEEDBACK`;
+FEEDBACK
+
+${judgmentBlock(judgment) || '（没有待判定清单）'}`;
 }
 
 export function tweaksPrompt(focus: string, feedback: string, craft: string, file = 'demo/index.html'): string {
@@ -224,6 +259,7 @@ ${feedback.trim() ? feedback.slice(0, 2500) : '（无反馈记录）'}
 3. spec 里 Craft Details 提到的细节：
 ${craft.trim() ? craft.slice(0, 1500) : '（无）'}
 4. 一眼能看出差别的手感参数：核心动画时长、缓动/弹簧刚度与阻尼、触发阈值/距离、关键的幅度（位移/缩放倍率）。
+形状类的东西（高光跨度、雾面四边形角点、光带位置）用 points 类型 + target 选择器，不要拆成一堆数字。
 不要抽：纯装饰的颜色、边框/阴影细节、字号、内边距、容器尺寸——除非用户点名。总数 4–10 个，宁少勿多，按重要性排序，label 用中文写清楚这个参数影响什么。
 
 要求：
@@ -247,4 +283,33 @@ feels_like 想不到贴切的就省略。tech_hints 保留 2–5 个最关键的
 
 spec：
 ${spec.slice(0, 5000)}`;
+}
+
+export function materialPrompt(spec: string, crops: string[], frames: string[]): string {
+  return `你是做 UI 材质还原的设计工程师。下面是一个 UI 效果的关键帧和它们的放大裁切图。请全部 Read，然后做两件事。
+
+放大图（主体 2x、中心细节 3x，看层次以这些为准）：
+${crops.map((f) => `- ${f}`).join('\n')}
+整帧（看位置关系）：
+${frames.map((f) => `- ${f}`).join('\n')}
+
+一、材质层栈。像 Figma 图层面板那样，把主体表面从上到下拆成一层一层，每层一行，表格列：层 | 形状 | 位置（用主体自身的百分比坐标，如"顶边，左右各留 4%，高约 6%"）| 软硬（清晰边/羽化，估 blur 半径）| 衰减方向（向哪边渐隐）| 浓淡（估 opacity）| 叠加方式（normal/screen/plus-lighter/multiply…）| 判断依据（在哪张放大图的哪里看到的）。
+规则：
+- 只写看得见的层；一层还是两层拿不准，就拆成两层并在依据里写"可能是同一层"。
+- 特别留意：边缘亮线、顶边柔光、大面积雾面/白纱、笔触状高光、四边压暗、描边粗细与透明度、投影/辉光颜色、相邻元素重叠处的叠加结果。
+- 区分"画在单个元素上的"和"多个元素重叠才出现的"——后者标明。
+- 用材质词定性一次：这更像玻璃/塑料薄片/宝石/金属/纸/果冻中的哪个，为什么（比如"四边压平、中间略鼓 → 塑料薄片"）。
+
+二、待人工判定清单。列出你从静止图判断不了、但会直接影响 demo 做法的问题，覆盖这四类，每类至少想一想：
+- aesthetic：审美意图（材质到底往哪个方向走、浓淡取舍）
+- shape：形状（哪块高光/雾面的准确形状，静止图看不清或有多种画法）
+- mechanism：机制二选一（同一现象两种实现都能对上帧，例如整卡翻转 vs 内容层翻转）
+- ownership：归属（这个像素效果属于单个元素，还是相邻元素叠出来的，还是背景）
+每条给 2–3 个候选、看哪张帧的哪个位置能判断、在 demo 里怎么验证。只列真会改变做法的，3–8 条。
+
+输出格式：先一个 \`\`\`markdown 围栏，内容只有层栈那一节的正文（不要标题行）；再一个 \`\`\`json 围栏：
+{"items":[{"kind":"aesthetic|shape|mechanism|ownership","q":"问题一句话","options":["候选1","候选2"],"frame":"frame-007.png","where":"红卡左上角顶边","verify":"hover 红卡后看顶边是否……"}]}
+
+spec 供参考（不要复述它，你看到的比它细）：
+${spec.slice(0, 4000)}`;
 }

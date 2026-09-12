@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { PatternMeta, PatternDetail, Settings, JobEvent, JobKind, InputMethod, PatternStatus, Category } from '../shared/types';
+import type { PatternMeta, PatternDetail, Settings, JobEvent, JobKind, InputMethod, PatternStatus, Category, JudgmentItem } from '../shared/types';
 import { api, newJobId } from './api';
 
 export interface Job { jobId: string; patternId: string; variant?: string; kind: JobKind; logs: string[]; status: 'running' | 'done' | 'error'; error?: string; startedAt: number }
@@ -31,7 +31,9 @@ interface State {
   verify(id: string): Promise<void>;
   generateDemo(id: string): Promise<void>;
   screenshot(id: string, compare: boolean): Promise<void>;
-  feedback(id: string, text: string, variant?: string): Promise<void>;
+  feedback(id: string, text: string, variant?: string, crop?: string): Promise<void>;
+  material(id: string): Promise<void>;
+  saveJudgment(id: string, items: JudgmentItem[]): Promise<void>;
   retag(id: string): Promise<void>;
   updateVariant(id: string, slug: string, patch: Record<string, unknown>): Promise<void>;
   confirmDemo(id: string): Promise<void>;
@@ -110,6 +112,7 @@ export const useStore = create<State>((set, get) => {
           await wrap(meta.id, 'parse', (j) => api.parseAuto(j, meta.id, method));
           const m2 = get().patterns.find((x) => x.id === meta.id);
           if (m2?.status === 'raw_spec') await get().verify(meta.id);
+          if (get().patterns.find((x) => x.id === meta.id)?.status === 'verified') await get().material(meta.id);
         }
         if (paths.length === 1) await get().open(meta.id);
       }
@@ -118,7 +121,9 @@ export const useStore = create<State>((set, get) => {
     verify: (id) => wrap(id, 'verify', (j) => api.verify(j, id)),
     generateDemo: (id) => wrap(id, 'demo', (j) => api.generateDemo(j, id)),
     screenshot: (id, compare) => wrap(id, 'screenshot', (j) => api.screenshotDemo(j, id, compare)),
-    feedback: (id, text, variant) => wrap(id, 'feedback', (j) => api.sendFeedback(j, id, text, variant), variant),
+    feedback: (id, text, variant, crop) => wrap(id, 'feedback', (j) => api.sendFeedback(j, id, text, variant, crop), variant),
+    material: (id) => wrap(id, 'material', (j) => api.material(j, id)),
+    async saveJudgment(id, items) { await api.saveJudgment(id, items); await afterStep(id); },
     retag: (id) => wrap(id, 'retag', (j) => api.retag(j, id)),
     async updateVariant(id, slug, patch) { await api.updateVariant(id, slug, patch); await afterStep(id); },
     confirmDemo: (id) => wrap(id, 'consolidate', (j) => api.confirmDemo(j, id)),

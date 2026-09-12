@@ -2,7 +2,8 @@ import { mkdir, readdir, readFile, writeFile, copyFile, stat, rm } from 'node:fs
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { LIBRARY_ROOT } from './paths.js';
-import type { PatternMeta, PatternDetail, PatternStatus, DemoVariant } from '../../shared/types.js';
+import type { PatternMeta, PatternDetail, PatternStatus, DemoVariant, JudgmentItem, TweakInfo } from '../../shared/types.js';
+import { JUDGMENT_KIND_LABEL } from '../../shared/types.js';
 
 export function patternDir(id: string) { return path.join(LIBRARY_ROOT, id); }
 
@@ -64,6 +65,16 @@ async function walk(dir: string, base = dir): Promise<string[]> {
 async function readJsonOpt<T>(p: string): Promise<T | null> { const t = await readOpt(p); if (!t) return null; try { return JSON.parse(t) as T; } catch { return null; } }
 
 export async function getPattern(id: string): Promise<PatternDetail> {
+  const d = await getPatternRaw(id);
+  d.tweakList = d.demoIndex ? parseTweakList(await readFile(d.demoIndex, 'utf8')) : [];
+  d.handoff = buildHandoff(d);
+  // keep handoff.md on disk for the MCP server / designers opening the folder
+  const hp = path.join(d.dir, 'handoff.md');
+  if (d.handoff && (await readOpt(hp)) !== d.handoff) await writeFile(hp, d.handoff);
+  return d;
+}
+
+async function getPatternRaw(id: string): Promise<PatternDetail> {
   const dir = patternDir(id);
   const meta = await readMeta(id);
   const videoCandidates = (await readdir(dir)).filter((f) => /^source\.(mp4|mov|webm|m4v|gif|mkv)$/i.test(f));
@@ -79,6 +90,10 @@ export async function getPattern(id: string): Promise<PatternDetail> {
     specVerified: await readOpt(path.join(dir, 'spec-verified.md')),
     demoIndex: existsSync(demoIndex) ? demoIndex : null,
     demoCompare: await readOpt(path.join(dir, 'demo-compare.md')),
+    judgment: await readJsonOpt<JudgmentItem[]>(path.join(dir, 'judgment.json')),
+    materialCrops: await listPngs(path.join(dir, 'material')),
+    consolidateDiff: await readOpt(path.join(dir, 'consolidate-diff.md')),
+    handoff: null, tweakList: [],
     comparePairs: await readJsonOpt(path.join(dir, 'demo-compare.json')),
     skillMd: await readOpt(path.join(dir, 'skill', 'SKILL.md')),
     skillFiles: await walk(path.join(dir, 'skill')),
@@ -192,4 +207,70 @@ export async function forkPattern(id: string, newName: string, fromVariant?: str
   }
   const meta = await readMeta(finalId);
   return updateMeta(finalId, { id: finalId, name: newName, status: 'demo_wip', favorite: false, demo_screenshot_count: 0, notes: `分支自 ${id}${fromVariant ? ' / ' + fromVariant : ''}`, created: new Date().toISOString().slice(0, 10) });
+}
+
+// ─── handoff ────────────────────────────────────────────────────
+/** Pull `{ key, label, type, unit }` out of the demo's window.__yoink.tweaks manifest without executing it. */
+export function parseTweakList(html: string): TweakInfo[] {
+  const m = html.match(/__yoink\.tweaks\s*=\s*\[([\s\S]*?)\];/);
+  if (!m) return [];
+  const out: TweakInfo[] = [];
+  for (const obj of m[1].match(/\{[^{}]*\}/g) ?? []) {
+    const g = (k: string) => obj.match(new RegExp(k + '\\s*:\\s*["\']([^"\']*)["\']'))?.[1];
+    const key = g('key'); if (!key) continue;
+    out.push({ key, label: g('label') ?? key, type: g('type') ?? 'range', unit: g('unit') });
+  }
+  return out;
+}
+
+function section(spec: string, name: string): string {
+  return spec.match(new RegExp('^## ' + name + '[^\\n]*\\n([\\s\\S]*?)(?=^## |(?![\\s\\S]))', 'm'))?.[1]?.trim() ?? '';
+}
+
+/** One page for whoever picks the demo up: what the video proves, what the user decided, what is still open, what the dials do. */
+export function buildHandoff(d: PatternDetail): string | null {
+  if (!d.spec) return null;
+  const s = d.spec;
+  const L: string[] = [`# ${d.meta.name} · 交接`, '', `> pattern \`${d.meta.id}\` · ${d.meta.status} · ${d.meta.tags.join(', ')}`, ''];
+  const core = section(s, 'Core Principle'); if (core) L.push('## 视频里能证明的：核心规则', '', core, '');
+  const mat = section(s, 'Material Layers'); if (mat) L.push('## 视频里能证明的：材质层栈', '', mat, '');
+  const dec = section(s, 'Design Decisions');
+  const answered = (d.judgment ?? []).filter((j) => j.answer.trim());
+  if (dec || answered.length) {
+    L.push('## 用户决定的（视频证明不了，别当事实改回去）', '');
+    if (dec) L.push(dec, '');
+    for (const j of answered) L.push(`- **${j.q}** → ${j.answer}`);
+    L.push('');
+  }
+  const open = (d.judgment ?? []).filter((j) => !j.answer.trim());
+  if (open.length) {
+    L.push('## 仍未定（接手的人要看一眼）', '');
+    for (const j of open) L.push(`- [${JUDGMENT_KIND_LABEL[j.kind] ?? j.kind}] **${j.q}**  候选：${j.options.join(' / ')}。看 ${j.frame} 的${j.where}；验证：${j.verify}`);
+    L.push('');
+  }
+  const craft = section(s, 'Craft Details'); if (craft) L.push('## 手感细节（不这么做就露馅）', '', craft, '');
+  if (d.tweakList.length) {
+    L.push('## 可调参数（demo 里 <style id="yoink-tweaks">）', '');
+    for (const t of d.tweakList) L.push(`- \`${t.key}\` — ${t.label}${t.type !== 'range' ? `（${t.type}）` : t.unit ? `（${t.unit}）` : ''}`);
+    L.push('');
+  }
+  if (d.variants.length) { L.push('## 方案', '', ...d.variants.map((v) => `- ${v.name}（variants/${v.slug}/）`), ''); }
+  return L.join('\n');
+}
+
+export async function saveJudgment(id: string, items: JudgmentItem[]) {
+  await writeFile(path.join(patternDir(id), 'judgment.json'), JSON.stringify(items, null, 2) + '\n');
+}
+
+/** Insert or replace a `## Name` section in spec.md, placed before `## Technical Approach` (else before Tags, else at the end). */
+export async function upsertSpecSection(id: string, name: string, body: string) {
+  const p = path.join(patternDir(id), 'spec.md');
+  let s = await readFile(p, 'utf8');
+  const block = `## ${name}\n\n${body.trim()}\n\n`;
+  const re = new RegExp('^## ' + name + '[^\\n]*\\n[\\s\\S]*?(?=^## |(?![\\s\\S]))', 'm');
+  if (re.test(s)) s = s.replace(re, block);
+  else if (/^## Technical Approach/m.test(s)) s = s.replace(/^## Technical Approach/m, block + '## Technical Approach');
+  else if (/^## Tags/m.test(s)) s = s.replace(/^## Tags/m, block + '## Tags');
+  else s = s.trimEnd() + '\n\n' + block;
+  await writeFile(p, s);
 }

@@ -6,6 +6,8 @@ import { JobLog } from './JobLog';
 import { api } from '../api';
 import { NameDialog } from './NameDialog';
 import { TweaksPanel } from './TweaksPanel';
+import { RegionPicker } from './RegionPicker';
+import { PointsOverlay, type PointsEdit } from './PointsOverlay';
 
 const REFRESH_KINDS = new Set(['feedback', 'tweaks', 'demo', 'consolidate', 'screenshot']);
 
@@ -23,6 +25,11 @@ export function DemoTab({ d }: { d: PatternDetail }) {
   const [reloadKey, setReloadKey] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
   const [showLog, setShowLog] = useState(false);
+  const [picker, setPicker] = useState(false);
+  const [crop, setCrop] = useState<string | null>(null);
+  const [points, setPoints] = useState<PointsEdit | null>(null);
+  const [scale, setScale] = useState(1);
+    const openJudg = (d.judgment ?? []).filter((j) => !j.answer.trim());
   const id = d.meta.id;
   const done = d.meta.status === 'demo_done' || d.meta.status === 'skill_ready';
 
@@ -63,8 +70,11 @@ export function DemoTab({ d }: { d: PatternDetail }) {
               {done && <span className="status" style={{ ['--sc' as string]: 'var(--s-done)' }}>已确认</span>}
             </div>
             <div className="demo-area">
-              <ScaledFrame src={api.fileUrl(preview ?? d.demoIndex) + '?r=' + reloadKey} onFrame={setFrameEl} />
-              <TweaksPanel key={vslug ?? 'main'} iframe={frameEl} patternId={id} variant={vslug} running={running} loadKey={reloadKey} onReload={() => refresh()} hidden={(variant ? variant.hidden_tweaks : d.meta.hidden_tweaks) ?? []} />
+              <div className="frame-col">
+                <ScaledFrame src={api.fileUrl(preview ?? d.demoIndex) + '?r=' + reloadKey} onFrame={setFrameEl} onScale={setScale} />
+                {points && <PointsOverlay iframe={frameEl} scale={scale} edit={points} />}
+              </div>
+              <TweaksPanel key={vslug ?? 'main'} iframe={frameEl} patternId={id} variant={vslug} running={running} loadKey={reloadKey} onReload={() => refresh()} hidden={(variant ? variant.hidden_tweaks : d.meta.hidden_tweaks) ?? []} onPoints={setPoints} pointsKey={points?.key ?? null} />
               {toast && <div className="toast" key={toast + reloadKey}>{toast}</div>}
             </div>
             {variant && (() => { const v = variant; return v ? (
@@ -80,10 +90,15 @@ export function DemoTab({ d }: { d: PatternDetail }) {
               {!variant && <button className="sm" disabled={running} onClick={() => setDialog({ title: '另存当前 demo 为方案', initial: `方案 ${d.variants.length + 1}`, label: '另存', run: (n) => saveVariant(id, n) })} title="复制一份当前 demo 作为独立方案，各改各的">另存当前 demo 为方案</button>}
               {!variant && <button className="sm" disabled={running} onClick={() => setDialog({ title: '分支成新 pattern', initial: d.meta.name + ' (variant)', label: '分支', run: (n) => forkPattern(id, n) })}>分支成新 pattern</button>}
             </div>
+            {!variant && openJudg.length > 0 && <div className="callout">还有 {openJudg.length} 个待判定问题没答（Spec 页）。答了再改 demo，通常比来回反馈省事。</div>}
             <div className="chat">
-              <textarea placeholder='直接说："动画太快了" "颜色偏蓝，应该更接近原视频的紫色" "hover 状态缺了个阴影"' value={fb} onChange={(e) => setFb(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && fb.trim() && !running) { feedback(id, fb.trim(), vslug); setFb(''); } }} />
-              <button className="primary" disabled={!fb.trim() || running} onClick={() => { feedback(id, fb.trim(), vslug); setFb(''); }}>{variant ? '发给 Claude 改这个方案' : '发给 Claude 改'}</button>
+              <textarea placeholder={crop ? '这块对照图里，原图和 demo 差在哪？比如"顶边高光比 demo 厚，而且中间更亮"' : '直接说："动画太快了" "颜色偏蓝，应该更接近原视频的紫色" "hover 状态缺了个阴影"'} value={fb} onChange={(e) => setFb(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && fb.trim() && !running) { feedback(id, fb.trim(), vslug, crop ?? undefined); setFb(''); setCrop(null); } }} />
+              <div className="chat-side">
+                <button className="primary" disabled={!fb.trim() || running} onClick={() => { feedback(id, fb.trim(), vslug, crop ?? undefined); setFb(''); setCrop(null); }}>{variant ? '发给 Claude 改这个方案' : '发给 Claude 改'}</button>
+                {crop ? <span className="crop-chip"><img src={api.fileUrl(crop)} alt="" />已附对照图<button className="ghost sm" onClick={() => setCrop(null)}>×</button></span>
+                  : <button className="sm" disabled={!d.frames.length} onClick={() => setPicker(true)} title="在原始帧上框一块放大，让 Claude 对着像素改，而不是听你描述">框原图对照</button>}
+              </div>
             </div>
             {log && <div className="row"><button className="ghost sm" onClick={() => setShowLog(!showLog)}>{showLog ? '收起' : '查看'}修改记录</button></div>}
             {showLog && log && <Markdown text={log} />}
@@ -111,18 +126,19 @@ export function DemoTab({ d }: { d: PatternDetail }) {
           )}
           {d.demoCompare && (<><h3>比对报告</h3><Markdown text={d.demoCompare} /></>)}
         </>)}
+        {picker && <RegionPicker frames={d.frames} onClose={() => setPicker(false)} onPick={async (f, r) => { setPicker(false); setCrop(await api.cropFrame(id, f, r)); }} />}
         {dialog && <NameDialog title={dialog.title} initial={dialog.initial} confirmLabel={dialog.label} onClose={() => setDialog(null)} onSubmit={async (n) => { setDialog(null); await dialog.run(n); }} />}
     </>
   );
 }
 
 /** The demo is authored at a fixed 960×600; scale it to fit whatever width the pane has. */
-function ScaledFrame({ src, onFrame }: { src: string; onFrame?: (el: HTMLIFrameElement | null) => void }) {
+function ScaledFrame({ src, onFrame, onScale }: { src: string; onFrame?: (el: HTMLIFrameElement | null) => void; onScale?: (s: number) => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
   useEffect(() => {
     const el = ref.current; if (!el) return;
-    const ro = new ResizeObserver(() => setScale(Math.min(1, el.clientWidth / 960)));
+    const ro = new ResizeObserver(() => { const s = Math.min(1, el.clientWidth / 960); setScale(s); onScale?.(s); });
     ro.observe(el); return () => ro.disconnect();
   }, []);
   return (

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useStore } from '../store';
 
-interface Tweak { key: string; label: string; type: 'range' | 'color' | 'text'; min?: number; max?: number; step?: number; unit?: string; value: string }
+import type { PointsEdit } from './PointsOverlay';
+
+interface Tweak { key: string; label: string; type: 'range' | 'color' | 'text' | 'points'; target?: string; min?: number; max?: number; step?: number; unit?: string; value: string }
 
 const ROW_H = 54;
 
@@ -10,7 +12,7 @@ const ROW_H = 54;
  * (the app and yoink:// are different origins; the bridge is injected by the protocol handler).
  * Rows that don't fit the column height are paged.
  */
-export function TweaksPanel({ iframe, patternId, variant, running, loadKey, onReload, hidden = [] }: { iframe: HTMLIFrameElement | null; patternId: string; variant?: string; running: boolean; loadKey: number; onReload: () => void; hidden?: string[] }) {
+export function TweaksPanel({ iframe, patternId, variant, running, loadKey, onReload, hidden = [], onPoints, pointsKey }: { iframe: HTMLIFrameElement | null; patternId: string; variant?: string; running: boolean; loadKey: number; onReload: () => void; hidden?: string[]; onPoints?: (p: PointsEdit | null) => void; pointsKey?: string | null }) {
   const { extractTweaks, applyTweaks, updateMeta, updateVariant } = useStore();
   const setHidden = (keys: string[]) => variant ? updateVariant(patternId, variant, { hidden_tweaks: keys }) : updateMeta(patternId, { hidden_tweaks: keys });
   const [focus, setFocus] = useState('');
@@ -29,7 +31,7 @@ export function TweaksPanel({ iframe, patternId, variant, running, loadKey, onRe
       if (e.source !== iframe.contentWindow || e.data?.type !== 'yoink:tweaks') return;
       const list: Tweak[] = e.data.tweaks ?? [];
       if (!list.length) { setTweaks(null); return; }
-      setTweaks(list); setValues(Object.fromEntries(list.map((t) => [t.key, t.value]))); setDirty(false);
+      setTweaks(list); setValues(Object.fromEntries(list.map((t) => [t.key, t.value]))); setDirty(false); onPoints?.(null);
     };
     window.addEventListener('message', onMsg);
     const ask = () => post({ type: 'yoink:get-tweaks' });
@@ -86,10 +88,11 @@ export function TweaksPanel({ iframe, patternId, variant, running, loadKey, onRe
       <div className="tweak-list" ref={listRef}>
         {slice.map((t) => (
           <label key={t.key} className="tweak v">
-            <span className="tl" title={t.key}><span className="tn">{t.label || t.key}</span>{t.type !== 'text' && <span className="tv">{values[t.key]}</span>}<button className="hide" title="藏掉这个参数" onClick={(e) => { e.preventDefault(); hide(t.key); }}>×</button></span>
+            <span className="tl" title={t.key}><span className="tn">{t.label || t.key}</span>{t.type !== 'text' && t.type !== 'points' && <span className="tv">{values[t.key]}</span>}<button className="hide" title="藏掉这个参数" onClick={(e) => { e.preventDefault(); hide(t.key); }}>×</button></span>
             {t.type === 'range' && <input type="range" min={t.min ?? 0} max={t.max ?? 100} step={t.step ?? 1} value={num(values[t.key] ?? '')} onChange={(e) => set(t, e.target.value)} />}
             {t.type === 'color' && <input type="color" value={toHex(values[t.key] ?? '#000000')} onChange={(e) => set(t, e.target.value)} />}
             {t.type === 'text' && <input type="text" value={values[t.key] ?? ''} onChange={(e) => set(t, e.target.value)} />}
+            {t.type === 'points' && <button className={`sm ${pointsKey === t.key ? 'on' : ''}`} onClick={(e) => { e.preventDefault(); if (pointsKey === t.key) onPoints?.(null); else onPoints?.({ key: t.key, label: t.label || t.key, target: t.target ?? 'body', value: values[t.key] ?? '', set: (v) => set(t, v) }); }}>{pointsKey === t.key ? '收起手柄' : '在 demo 上拖角点'}</button>}
           </label>
         ))}
       </div>

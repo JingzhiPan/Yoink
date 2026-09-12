@@ -7,12 +7,12 @@ import { LIBRARY_ROOT, binary } from './lib/paths.js';
 import { extractFrames, makeUploadCopy } from './lib/ffmpeg.js';
 import { runClaude, extractJson } from './lib/claude.js';
 import { parseSpec, slugify } from './lib/parser.js';
-import { verifyPrompt, demoPrompt, feedbackPrompt, comparePrompt, skillPrompt, computerUsePrompt, consolidatePrompt, tweaksPrompt, retagPrompt } from './lib/prompts.js';
+import { verifyPrompt, demoPrompt, feedbackPrompt, comparePrompt, skillPrompt, computerUsePrompt, consolidatePrompt, tweaksPrompt, retagPrompt, materialPrompt } from './lib/prompts.js';
 import { screenshotDemo } from './lib/screenshot.js';
 import { parseWithOpenAI } from './lib/openai.js';
-import { makeCover, coverPath } from './lib/cover.js';
+import { makeCover, coverPath, makeMaterialCrops, cropRegion } from './lib/cover.js';
 import * as lib from './lib/library.js';
-import type { PatternMeta, Settings, JobEvent, JobKind, InputMethod, Category, Complexity, TagFacets } from '../shared/types.js';
+import type { PatternMeta, Settings, JobEvent, JobKind, InputMethod, Category, Complexity, TagFacets, JudgmentItem } from '../shared/types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isDev = !app.isPackaged;
@@ -39,6 +39,7 @@ const TWEAK_BRIDGE = `<script>(function(){
   window.addEventListener('message',function(e){ var m=e.data||{};
     if(m.type==='yoink:get-tweaks'){ reply(e.source); }
     else if(m.type==='yoink:set-tweak'){ document.documentElement.style.setProperty(m.key,m.value); }
+    else if(m.type==='yoink:get-rect'){ var el=null; try{ el=document.querySelector(m.selector); }catch(x){} if(el){ var r=el.getBoundingClientRect(); try{ e.source.postMessage({type:'yoink:rect',selector:m.selector,rect:{x:r.left,y:r.top,w:r.width,h:r.height}},'*'); }catch(x){} } }
     else if(m.type==='yoink:reset-tweaks'){ (m.keys||[]).forEach(function(k){ document.documentElement.style.removeProperty(k); }); reply(e.source); } });
   window.addEventListener('load',function(){ if(window.parent!==window) reply(window.parent); });
 })();</script>`;
@@ -158,7 +159,7 @@ async function stepDemo(jobId: string, id: string): Promise<PatternMeta> {
     await lib.updateMeta(id, { status: 'demo_wip' });
     await mkdir(path.join(d.dir, 'demo'), { recursive: true });
     log('Claude Code 正在生成 demo…');
-    await runClaude({ prompt: demoPrompt(d.spec, d.frames), cwd: d.dir, allowedTools: ['Read', 'Write', 'Edit', 'Glob'], onLog: log, signal });
+    await runClaude({ prompt: demoPrompt(d.spec, d.frames, d.judgment, d.materialCrops), cwd: d.dir, allowedTools: ['Read', 'Write', 'Edit', 'Glob'], onLog: log, signal });
     if (!existsSync(path.join(d.dir, 'demo', 'index.html'))) throw new Error('Claude 没有写出 demo/index.html');
     return lib.readMeta(id);
   });
@@ -221,7 +222,9 @@ async function stepRetag(jobId: string, id: string): Promise<PatternMeta> {
     const tf = facetsOf(j); if (!tf) throw new Error('没解析到标签 JSON：\n' + out.slice(0, 300));
     const patch: Partial<PatternMeta> = { tag_facets: tf, tags: Object.values(tf) };
     if (Array.isArray(j.tech_hints)) patch.tech_hints = j.tech_hints.map(String).slice(0, 5);
-    return lib.updateMeta(id, patch);
+    const m = await lib.updateMeta(id, patch);
+    await syncSpecTags(id);
+    return m;
   });
 }
 
@@ -232,15 +235,16 @@ function variantTarget(d: Awaited<ReturnType<typeof lib.getPattern>>, slug?: str
   return { file: `variants/${slug}/index.html`, abs: v.index, log: `variants/${slug}/feedback.md`, history: v.feedbackLog ?? '' };
 }
 
-async function stepFeedback(jobId: string, id: string, feedback: string, variant?: string): Promise<PatternMeta> {
+async function stepFeedback(jobId: string, id: string, feedback: string, variant?: string, crop?: string): Promise<PatternMeta> {
   return runJob(jobId, id, 'feedback', async (log, signal) => {
     const d = await lib.getPattern(id);
     if (!d.demoIndex || !d.spec) throw new Error('还没有 demo');
     const t = variantTarget(d, variant);
     const stamp = new Date().toISOString().slice(0, 16).replace('T', ' ');
     log(variant ? 'Claude Code 正在按反馈修改这个方案…' : 'Claude Code 正在按反馈修改 demo…');
-    const out = await runClaude({ prompt: feedbackPrompt(feedback, t.history, d.spec, t.file), cwd: d.dir, allowedTools: ['Read', 'Write', 'Edit', 'Glob'], onLog: log, signal });
-    await lib.appendText(id, t.log, `## ${stamp}\n**反馈：** ${feedback}\n\n**修改：** ${out.trim()}\n\n`);
+    const shot = crop ? d.demoScreenshots[1] ?? d.demoScreenshots[0] : undefined;
+    const out = await runClaude({ prompt: feedbackPrompt(feedback, t.history, d.spec, t.file, crop, shot), cwd: d.dir, allowedTools: ['Read', 'Write', 'Edit', 'Glob'], onLog: log, signal });
+    await lib.appendText(id, t.log, `## ${stamp}\n**反馈：** ${feedback}${crop ? `\n（附对照图 ${path.relative(d.dir, crop)}）` : ''}\n\n**修改：** ${out.trim()}\n\n`);
     return variant ? lib.readMeta(id) : lib.updateMeta(id, { status: 'demo_wip' });
   });
 }
@@ -253,12 +257,20 @@ async function stepConsolidate(jobId: string, id: string): Promise<PatternMeta> 
     log('先给最终 demo 截一轮图并和原始帧比对…');
     await shootAndCompare(d, log, signal);
     log('Claude 正在把校正合并回 spec 并精简…');
-    const out = await runClaude({ prompt: consolidatePrompt(d.spec, d.feedbackLog ?? ''), cwd: d.dir, allowedTools: ['Read'], onLog: log, signal });
+    const out = await runClaude({ prompt: consolidatePrompt(d.spec, d.feedbackLog ?? '', d.judgment), cwd: d.dir, allowedTools: ['Read'], onLog: log, signal });
+    const diff = out.match(/```diff-md\s*([\s\S]*?)```/i)?.[1]?.trim();
     const md = out.match(/```(?:markdown|md)\s*([\s\S]*?)```/i)?.[1]?.trim();
     if (!md || md.length < 200) throw new Error('精简 spec 输出异常：\n' + out.slice(0, 300));
     if (!existsSync(path.join(d.dir, 'spec-verified.md'))) await lib.writeText(id, 'spec-verified.md', d.spec);
+    if (diff) await lib.writeText(id, 'consolidate-diff.md', diff + '\n');
     await lib.writeText(id, 'spec.md', md + '\n');
-    return lib.setStatus(id, 'demo_done');
+    await lib.setStatus(id, 'demo_done');
+    if (existsSync(path.join(d.dir, 'skill', 'SKILL.md'))) {
+      log('spec 变了，重新打包 skill…');
+      await packSkillFiles(id, log, signal);
+      return lib.setStatus(id, 'skill_ready');
+    }
+    return lib.readMeta(id);
   });
 }
 
@@ -294,20 +306,57 @@ async function applyTweaks(id: string, values: Record<string, string>, variant?:
   await writeFile(t.abs, html);
 }
 
+async function packSkillFiles(id: string, log: (m: string) => void, signal: AbortSignal) {
+  const d = await lib.getPattern(id);
+  if (!d.spec || !d.demoIndex) throw new Error('需要先确认 demo');
+  log('Claude Code 正在打包 skill…');
+  await runClaude({ prompt: skillPrompt(d.meta, d.spec, d.demoScreenshots), cwd: d.dir, allowedTools: ['Read', 'Write', 'Edit', 'Glob'], onLog: log, signal });
+  if (!existsSync(path.join(d.dir, 'skill', 'SKILL.md'))) throw new Error('Claude 没有写出 skill/SKILL.md');
+  // copy demo screenshots + handoff into the skill so it is self-contained
+  const shotDir = path.join(d.dir, 'skill', 'screenshots');
+  await mkdir(shotDir, { recursive: true });
+  const { copyFile } = await import('node:fs/promises');
+  for (const s of d.demoScreenshots) await copyFile(s, path.join(shotDir, path.basename(s)));
+  if (d.handoff) await writeFile(path.join(d.dir, 'skill', 'handoff.md'), d.handoff);
+}
 async function stepSkill(jobId: string, id: string): Promise<PatternMeta> {
-  return runJob(jobId, id, 'skill', async (log, signal) => {
+  return runJob(jobId, id, 'skill', async (log, signal) => { await packSkillFiles(id, log, signal); return lib.readMeta(id); });
+}
+
+/** Material pass: zoomed crops of two frames → layer stack into spec.md + the human-judgment list. */
+async function stepMaterial(jobId: string, id: string): Promise<PatternMeta> {
+  return runJob(jobId, id, 'material', async (log, signal) => {
     const d = await lib.getPattern(id);
-    if (!d.spec || !d.demoIndex) throw new Error('需要先确认 demo');
-    log('Claude Code 正在打包 skill…');
-    await runClaude({ prompt: skillPrompt(d.meta, d.spec, d.demoScreenshots), cwd: d.dir, allowedTools: ['Read', 'Write', 'Edit', 'Glob'], onLog: log, signal });
-    if (!existsSync(path.join(d.dir, 'skill', 'SKILL.md'))) throw new Error('Claude 没有写出 skill/SKILL.md');
-    // copy demo screenshots into the skill so it is self-contained
-    const shotDir = path.join(d.dir, 'skill', 'screenshots');
-    await mkdir(shotDir, { recursive: true });
-    const { copyFile } = await import('node:fs/promises');
-    for (const s of d.demoScreenshots) await copyFile(s, path.join(shotDir, path.basename(s)));
+    if (!d.spec || !d.frames.length) throw new Error('需要先有核对过的 spec 和关键帧');
+    log('裁放大图…');
+    const n = d.frames.length;
+    const picks = [...new Set([Math.floor(n * 0.3), Math.floor(n * 0.7)])].map((i) => d.frames[Math.min(n - 1, i)]);
+    const { rm } = await import('node:fs/promises');
+    await rm(path.join(d.dir, 'material'), { recursive: true, force: true });
+    const crops: string[] = [];
+    for (const [i, f] of picks.entries()) crops.push(...await makeMaterialCrops(f, path.join(d.dir, 'material'), `crop-${i + 1}-${path.basename(f, '.png')}`));
+    log('Claude 正在拆材质层栈、列待判定问题…');
+    const out = await runClaude({ prompt: materialPrompt(d.spec, crops, d.frames), cwd: d.dir, allowedTools: ['Read'], onLog: log, signal });
+    const md = out.match(/```(?:markdown|md)\s*([\s\S]*?)```/i)?.[1]?.trim();
+    const j = extractJson<{ items?: any[] }>(out.slice(out.lastIndexOf('```json')));
+    if (!md) throw new Error('没解析到材质层栈：\n' + out.slice(0, 300));
+    await lib.upsertSpecSection(id, 'Material Layers', md);
+    const old = d.judgment ?? [];
+    const items: JudgmentItem[] = (j?.items ?? []).map((it: any, i: number) => {
+      const q = String(it.q ?? '').trim();
+      const prev = old.find((o) => o.q === q);
+      return { id: prev?.id ?? `j${Date.now().toString(36)}${i}`, kind: (['aesthetic', 'shape', 'mechanism', 'ownership'].includes(it.kind) ? it.kind : 'mechanism'), q, options: Array.isArray(it.options) ? it.options.map(String) : [], frame: String(it.frame ?? ''), where: String(it.where ?? ''), verify: String(it.verify ?? ''), answer: prev?.answer ?? '' };
+    }).filter((it: JudgmentItem) => it.q);
+    await lib.saveJudgment(id, items);
     return lib.readMeta(id);
   });
+}
+
+/** After a retag, mirror the facets into the spec's own Tags section so the file and meta agree. */
+async function syncSpecTags(id: string) {
+  const d = await lib.getPattern(id);
+  if (!d.spec || !/^## Tags/m.test(d.spec)) return;
+  await lib.upsertSpecSection(id, 'Tags', d.meta.tags.join(', '));
 }
 
 async function stepParseAuto(jobId: string, id: string, method: InputMethod): Promise<PatternMeta> {
@@ -374,7 +423,14 @@ ipcMain.handle('pipeline:parseAuto', (_e, jobId: string, id: string, method: Inp
 ipcMain.handle('pipeline:verify', (_e, jobId: string, id: string) => stepVerify(jobId, id));
 ipcMain.handle('pipeline:demo', (_e, jobId: string, id: string) => stepDemo(jobId, id));
 ipcMain.handle('pipeline:screenshot', (_e, jobId: string, id: string, compare: boolean) => stepScreenshot(jobId, id, compare));
-ipcMain.handle('pipeline:feedback', (_e, jobId: string, id: string, fb: string, variant?: string) => stepFeedback(jobId, id, fb, variant));
+ipcMain.handle('pipeline:feedback', (_e, jobId: string, id: string, fb: string, variant?: string, crop?: string) => stepFeedback(jobId, id, fb, variant, crop));
+ipcMain.handle('pipeline:material', (_e, jobId: string, id: string) => stepMaterial(jobId, id));
+ipcMain.handle('judgment:save', (_e, id: string, items: JudgmentItem[]) => lib.saveJudgment(id, items));
+ipcMain.handle('frame:crop', async (_e, id: string, frame: string, r: { x: number; y: number; w: number; h: number }) => {
+  const d = await lib.getPattern(id);
+  const out = path.join(d.dir, 'crops', `${Date.now().toString(36)}-${path.basename(frame, '.png')}.png`);
+  return cropRegion(frame, out, r);
+});
 ipcMain.handle('pipeline:retag', (_e, jobId: string, id: string) => stepRetag(jobId, id));
 ipcMain.handle('variant:update', (_e, id: string, slug: string, patch: Record<string, unknown>) => lib.updateVariant(id, slug, patch));
 ipcMain.handle('pipeline:confirmDemo', (_e, jobId: string, id: string) => stepConsolidate(jobId, id));
