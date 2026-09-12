@@ -23,11 +23,9 @@ export function DetailPanel() {
   if (!d) return null;
   const hasSpec = !!d.spec;
   const skillUnlocked = ['demo_done', 'skill_ready'].includes(d.meta.status);
-  const cover = d.cover ?? d.demoScreenshots[0] ?? d.frames[0];
   return (
     <main className="panel workspace" key={d.meta.id} ref={ref}>
-      <div className="cover drag">{cover ? <img src={api.fileUrl(cover) + '?v=' + d.meta.demo_screenshot_count + '-' + (d.cover ? 'c' : 'f')} alt="" key={cover + d.meta.demo_screenshot_count} /> : 'no frames'}</div>
-      <div className="title-row">
+      <div className="title-row drag">
         <h1><input key={d.meta.name} defaultValue={d.meta.name} onBlur={(e) => e.target.value !== d.meta.name && updateMeta(d.meta.id, { name: e.target.value })} /></h1>
         <StatusBadge status={d.meta.status} />
       </div>

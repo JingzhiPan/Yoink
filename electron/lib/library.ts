@@ -61,6 +61,8 @@ async function walk(dir: string, base = dir): Promise<string[]> {
   return out.sort();
 }
 
+async function readJsonOpt<T>(p: string): Promise<T | null> { const t = await readOpt(p); if (!t) return null; try { return JSON.parse(t) as T; } catch { return null; } }
+
 export async function getPattern(id: string): Promise<PatternDetail> {
   const dir = patternDir(id);
   const meta = await readMeta(id);
@@ -77,6 +79,7 @@ export async function getPattern(id: string): Promise<PatternDetail> {
     specVerified: await readOpt(path.join(dir, 'spec-verified.md')),
     demoIndex: existsSync(demoIndex) ? demoIndex : null,
     demoCompare: await readOpt(path.join(dir, 'demo-compare.md')),
+    comparePairs: await readJsonOpt(path.join(dir, 'demo-compare.json')),
     skillMd: await readOpt(path.join(dir, 'skill', 'SKILL.md')),
     skillFiles: await walk(path.join(dir, 'skill')),
     feedbackLog: await readOpt(path.join(dir, 'demo-feedback.md')),

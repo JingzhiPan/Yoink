@@ -162,17 +162,37 @@ async function stepDemo(jobId: string, id: string): Promise<PatternMeta> {
   });
 }
 
+/** Screenshot every demo state, then let Claude pair each shot with its original frame and write the report. */
+async function shootAndCompare(d: Awaited<ReturnType<typeof lib.getPattern>>, log: (m: string) => void, signal: AbortSignal) {
+  const shots = await screenshotDemo(d.demoIndex!, path.join(d.dir, 'demo-screenshots'), log);
+  await lib.updateMeta(d.meta.id, { demo_screenshot_count: shots.length });
+  await refreshCover(d.meta.id);
+  if (!d.frames.length) return;
+  log('Claude 正在比对 demo 截图和原始帧…');
+  const out = await runClaude({ prompt: comparePrompt(d.frames, shots), cwd: d.dir, allowedTools: ['Read'], onLog: log, signal });
+  const jm = out.match(/```json\s*([\s\S]*?)```\s*$/);
+  let report = out;
+  if (jm) {
+    report = out.slice(0, jm.index).trim();
+    try {
+      const pairs = (JSON.parse(jm[1]).pairs as { shot: string; frame: string | null; note?: string }[])
+        .map((p) => ({ shot: path.basename(p.shot), frame: p.frame ? path.basename(p.frame) : null, note: p.note ?? '' }))
+        .filter((p) => shots.some((s) => path.basename(s) === p.shot));
+      await lib.writeText(d.meta.id, 'demo-compare.json', JSON.stringify(pairs, null, 2) + '\n');
+    } catch { log('配对 JSON 解析失败，只保留文字报告'); }
+  }
+  await lib.writeText(d.meta.id, 'demo-compare.md', report.trim() + '\n');
+}
+
 async function stepScreenshot(jobId: string, id: string, compare: boolean): Promise<PatternMeta> {
   return runJob(jobId, id, 'screenshot', async (log, signal) => {
     const d = await lib.getPattern(id);
     if (!d.demoIndex) throw new Error('还没有 demo');
-    const shots = await screenshotDemo(d.demoIndex, path.join(d.dir, 'demo-screenshots'), log);
-    await lib.updateMeta(id, { demo_screenshot_count: shots.length });
-    await refreshCover(id);
-    if (compare && d.frames.length) {
-      log('Claude 正在比对 demo 截图和原始帧…');
-      const report = await runClaude({ prompt: comparePrompt(d.frames, shots), cwd: d.dir, allowedTools: ['Read'], onLog: log, signal });
-      await lib.writeText(id, 'demo-compare.md', report.trim() + '\n');
+    if (compare) await shootAndCompare(d, log, signal);
+    else {
+      const shots = await screenshotDemo(d.demoIndex, path.join(d.dir, 'demo-screenshots'), log);
+      await lib.updateMeta(id, { demo_screenshot_count: shots.length });
+      await refreshCover(id);
     }
     return lib.readMeta(id);
   });
@@ -195,12 +215,8 @@ async function stepConsolidate(jobId: string, id: string): Promise<PatternMeta> 
   return runJob(jobId, id, 'consolidate', async (log, signal) => {
     const d = await lib.getPattern(id);
     if (!d.spec || !d.demoIndex) throw new Error('需要 spec 和 demo');
-    if (d.demoScreenshots.length === 0) {
-      log('先给 demo 截一轮图…');
-      const shots = await screenshotDemo(d.demoIndex, path.join(d.dir, 'demo-screenshots'), log);
-      await lib.updateMeta(id, { demo_screenshot_count: shots.length });
-      await refreshCover(id);
-    }
+    log('先给最终 demo 截一轮图并和原始帧比对…');
+    await shootAndCompare(d, log, signal);
     log('Claude 正在把校正合并回 spec 并精简…');
     const out = await runClaude({ prompt: consolidatePrompt(d.spec, d.feedbackLog ?? ''), cwd: d.dir, allowedTools: ['Read'], onLog: log, signal });
     const md = out.match(/```(?:markdown|md)\s*([\s\S]*?)```/i)?.[1]?.trim();

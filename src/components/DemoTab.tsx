@@ -7,8 +7,10 @@ import { api } from '../api';
 import { NameDialog } from './NameDialog';
 import { TweaksPanel } from './TweaksPanel';
 
+const REFRESH_KINDS = new Set(['feedback', 'tweaks', 'demo', 'consolidate', 'screenshot']);
+
 export function DemoTab({ d }: { d: PatternDetail }) {
-  const { generateDemo, screenshot, feedback, confirmDemo, saveVariant, restoreVariant, deleteVariant, forkPattern, previewVariant: preview, setPreviewVariant: setPreview } = useStore();
+  const { generateDemo, feedback, confirmDemo, saveVariant, restoreVariant, deleteVariant, forkPattern, previewVariant: preview, setPreviewVariant: setPreview } = useStore();
   const [frameEl, setFrameEl] = useState<HTMLIFrameElement | null>(null);
   const [dialog, setDialog] = useState<{ title: string; initial: string; label: string; run: (v: string) => Promise<void> } | null>(null);
   const jobs = useStore((s) => s.jobs);
@@ -16,9 +18,26 @@ export function DemoTab({ d }: { d: PatternDetail }) {
   const job = latestJobFor(jobs, d.meta.id);
   const [fb, setFb] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
+  const [toast, setToast] = useState<string | null>(null);
   const [showLog, setShowLog] = useState(false);
   const id = d.meta.id;
   const done = d.meta.status === 'demo_done' || d.meta.status === 'skill_ready';
+
+  const toastTimer = useRef<number>(0);
+  const refresh = (msg = 'demo 已刷新') => {
+    setReloadKey((k) => k + 1);
+    setToast(msg); window.clearTimeout(toastTimer.current); toastTimer.current = window.setTimeout(() => setToast(null), 2200);
+  };
+  // any Claude job that touches the demo finishing → reload the iframe (and the tweaks read from it)
+  const wasRunning = useRef(false);
+  useEffect(() => {
+    if (wasRunning.current && !running && job?.status === 'done' && REFRESH_KINDS.has(job.kind)) refresh(job.kind === 'tweaks' ? 'tweaks 已刷新' : 'demo 已刷新');
+    wasRunning.current = running;
+  }, [running, job?.status, job?.kind]);
+
+  const shotName = (f: string) => f.split('/').pop() ?? f;
+  const frameByName = (n: string | null) => (n ? d.frames.find((f) => shotName(f) === n) ?? null : null);
+  const pairs = d.comparePairs?.length ? d.comparePairs : null;
 
   return (
     <>
@@ -32,20 +51,21 @@ export function DemoTab({ d }: { d: PatternDetail }) {
           <>
             <div className="row">
               <h3>Demo 预览</h3><span className="spacer" />
-              <button className="sm" onClick={() => setReloadKey((k) => k + 1)}>刷新</button>
               <button className="sm" onClick={() => api.showInFinder(d.demoIndex!)}>在 Finder 显示</button>
-              <button className="sm" disabled={running} onClick={() => screenshot(id, true)}>截图比对</button>
               <button className="sm" disabled={running} onClick={() => generateDemo(id)} title="丢掉当前 demo 重新生成">重新生成</button>
-              {!done && <button className="primary sm" disabled={running} onClick={() => confirmDemo(id)} title="确认后 Claude 会把你的校正合并回 spec 并精简">确认 demo ✓</button>}
+              {!done && <button className="primary sm" disabled={running} onClick={() => confirmDemo(id)} title="确认后自动截图比对，并把你的校正合并回 spec">确认 demo ✓</button>}
               {done && <span className="status" style={{ ['--sc' as string]: 'var(--s-done)' }}>已确认</span>}
             </div>
-            <ScaledFrame src={api.fileUrl(preview ?? d.demoIndex) + '?r=' + reloadKey} onFrame={setFrameEl} />
-            {!preview && <TweaksPanel iframe={frameEl} patternId={id} running={running} loadKey={reloadKey} onReload={() => setReloadKey((k) => k + 1)} hidden={d.meta.hidden_tweaks ?? []} />}
+            <div className={`demo-area ${preview ? 'solo' : ''}`}>
+              <ScaledFrame src={api.fileUrl(preview ?? d.demoIndex) + '?r=' + reloadKey} onFrame={setFrameEl} />
+              {!preview && <TweaksPanel iframe={frameEl} patternId={id} running={running} loadKey={reloadKey} onReload={() => refresh()} hidden={d.meta.hidden_tweaks ?? []} />}
+              {toast && <div className="toast" key={toast + reloadKey}>{toast}</div>}
+            </div>
             {preview && (() => { const v = d.variants.find((x) => x.index === preview); return v ? (
               <div className="callout variant-bar">
                 正在预览方案「{v.name}」，当前 demo 未改动。<span className="spacer" />
                 <button className="ghost sm" onClick={() => setPreview(null)}>回到当前 demo</button>
-                <button className="ghost sm" disabled={running} onClick={async () => { if (confirm(`用「${v.name}」覆盖当前 demo？建议先把当前 demo 另存。`)) { await restoreVariant(id, v.slug); setReloadKey((k) => k + 1); } }}>恢复为当前</button>
+                <button className="ghost sm" disabled={running} onClick={async () => { if (confirm(`用「${v.name}」覆盖当前 demo？建议先把当前 demo 另存。`)) { await restoreVariant(id, v.slug); refresh('已恢复为当前 demo'); } }}>恢复为当前</button>
                 <button className="ghost sm" disabled={running} onClick={() => setDialog({ title: `从「${v.name}」分支成新 pattern`, initial: `${d.meta.name} · ${v.name}`, label: '分支', run: (n) => forkPattern(id, n, v.slug) })}>分支</button>
                 <button className="ghost sm danger" onClick={async () => { if (confirm(`删除方案「${v.name}」？`)) await deleteVariant(id, v.slug); }}>删</button>
               </div>) : null; })()}
@@ -64,13 +84,27 @@ export function DemoTab({ d }: { d: PatternDetail }) {
           </>
         )}
         <JobLog job={job} />
-        <h3>原始帧 vs demo 截图</h3>
-        {d.demoScreenshots.length === 0 && <div className="hint">还没截图。点上方"截图比对"，会按 demo 里定义的每个状态各截一张，然后让 Claude 和原始帧比对。</div>}
-        <div className="compare">
-          <div className="col"><h4>原始帧</h4>{d.frames.map((f) => <img key={f} src={api.fileUrl(f)} alt="" loading="lazy" />)}</div>
-          <div className="col"><h4>demo 截图</h4>{d.demoScreenshots.map((f) => <img key={f} src={api.fileUrl(f)} alt="" title={f.split('/').pop()} loading="lazy" />)}</div>
-        </div>
-        {d.demoCompare && (<><h3>比对报告</h3><Markdown text={d.demoCompare} /></>)}
+        {d.demoIndex && (<>
+          <h3>原始帧 vs demo 截图</h3>
+          {d.demoScreenshots.length === 0 && <div className="hint">确认 demo 后会自动按 demo 里定义的每个状态各截一张，让 Claude 和原始帧配对比对。</div>}
+          {pairs ? (
+            <div className="pairs">
+              <div className="ph">原始帧</div><div className="ph">demo 截图</div><div className="ph">差异</div>
+              {pairs.map((p) => { const fr = frameByName(p.frame); const sh = d.demoScreenshots.find((s) => shotName(s) === p.shot); return (
+                <div className="pair" key={p.shot}>
+                  <div className="pf">{fr ? <img src={api.fileUrl(fr)} alt="" loading="lazy" title={p.frame ?? ''} /> : <div className="nomatch">原视频里没有对应状态</div>}</div>
+                  <div className="pf">{sh && <img src={api.fileUrl(sh) + '?v=' + d.meta.demo_screenshot_count} alt="" loading="lazy" title={p.shot} />}</div>
+                  <div className="pn"><b>{p.shot.replace(/^state-|\.png$/g, '')}</b>{p.note && p.note !== 'ok' ? <span>{p.note}</span> : <span className="ok">一致</span>}</div>
+                </div>); })}
+            </div>
+          ) : d.demoScreenshots.length > 0 && (
+            <div className="compare">
+              <div className="col"><h4>原始帧</h4>{d.frames.map((f) => <img key={f} src={api.fileUrl(f)} alt="" loading="lazy" />)}</div>
+              <div className="col"><h4>demo 截图</h4>{d.demoScreenshots.map((f) => <img key={f} src={api.fileUrl(f)} alt="" title={f.split('/').pop()} loading="lazy" />)}</div>
+            </div>
+          )}
+          {d.demoCompare && (<><h3>比对报告</h3><Markdown text={d.demoCompare} /></>)}
+        </>)}
         {dialog && <NameDialog title={dialog.title} initial={dialog.initial} confirmLabel={dialog.label} onClose={() => setDialog(null)} onSubmit={async (n) => { setDialog(null); await dialog.run(n); }} />}
     </>
   );

@@ -93,7 +93,11 @@ ${frames.map((f) => `- ${f}`).join('\n')}
 demo 截图：
 ${shots.map((f) => `- ${f}`).join('\n')}
 
-输出一份简短的 Markdown 对比报告（中文）：
+先做配对：每张 demo 截图对应原始视频里的哪一个状态？从原始帧里挑出最接近那个状态的一张（同一阶段、同一交互时刻）。原始帧里大量是过渡帧和重复帧，配不上的直接丢掉，不要硬凑；一张 demo 截图找不到对应状态就 frame 填 null。
+
+输出两部分：
+
+第一部分，简短的 Markdown 对比报告（中文）：
 ## 匹配良好
 - ...
 ## 差异较大（需要修）
@@ -101,7 +105,13 @@ ${shots.map((f) => `- ${f}`).join('\n')}
 ## 无法比对
 - demo 截图覆盖不到的原始状态（如中间动画帧）
 
-只输出报告本身，不要客套。`;
+第二部分，最后单独一个 \`\`\`json 围栏，给程序读，格式严格如下（文件名只写 basename）：
+\`\`\`json
+{"pairs":[{"shot":"state-hover.png","frame":"frame-007.png","note":"一句话说差异，没差异写 ok"}]}
+\`\`\`
+pairs 按 demo 截图顺序，每张截图恰好一条。
+
+只输出这两部分，不要客套。`;
 }
 
 export function skillPrompt(meta: PatternMeta, spec: string, shots: string[]): string {

@@ -49,11 +49,14 @@ export interface PatternDetail {
   specVerified: string | null; // long verified version kept after consolidation
   demoIndex: string | null;    // absolute path to demo/index.html
   demoCompare: string | null;  // demo-compare.md
+  comparePairs: ComparePair[] | null; // demo-compare.json: which original frame each demo shot corresponds to
   skillMd: string | null;
   skillFiles: string[];        // relative paths inside skill/
   feedbackLog: string | null;  // demo-feedback.md
   variants: DemoVariant[];     // saved demo snapshots under variants/
 }
+
+export interface ComparePair { shot: string; frame: string | null; note: string }
 
 export interface DemoVariant { slug: string; name: string; created: string; note: string; index: string; }
 
