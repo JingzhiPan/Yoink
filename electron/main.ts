@@ -7,12 +7,13 @@ import { LIBRARY_ROOT, binary } from './lib/paths.js';
 import { extractFrames, makeUploadCopy } from './lib/ffmpeg.js';
 import { runClaude, extractJson } from './lib/claude.js';
 import { parseSpec, slugify } from './lib/parser.js';
-import { verifyPrompt, demoPrompt, feedbackPrompt, comparePrompt, skillPrompt, computerUsePrompt, consolidatePrompt, tweaksPrompt, retagPrompt, materialPrompt, selfCheckPrompt, modeBlock, outlinePrompt, materializePrompt } from './lib/prompts.js';
+import { verifyPrompt, demoPrompt, feedbackPrompt, comparePrompt, skillPrompt, computerUsePrompt, consolidatePrompt, tweaksPrompt, retagPrompt, materialPrompt, selfCheckPrompt, modeBlock, outlinePrompt, materializePrompt, realismBlock, needsMaterialSkill } from './lib/prompts.js';
 import { screenshotDemo } from './lib/screenshot.js';
 import { parseWithOpenAI } from './lib/openai.js';
 import { makeCover, coverPath, makeMaterialCrops, makeMaterialCropsFrom, cropRegion } from './lib/cover.js';
 import * as lib from './lib/library.js';
-import type { PatternMeta, Settings, JobEvent, JobKind, InputMethod, Category, Complexity, TagFacets, JudgmentItem } from '../shared/types.js';
+import type { PatternMeta, Settings, JobEvent, JobKind, InputMethod, Category, Complexity, TagFacets, JudgmentItem, Realism } from '../shared/types.js';
+import { REALISM_LABEL, modeOf } from '../shared/types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isDev = !app.isPackaged;
@@ -103,6 +104,17 @@ async function refreshCover(id: string) {
   const mid = d.frames[Math.floor(d.frames.length / 2)];
   try { await makeCover([d.demoScreenshots[1], d.demoScreenshots[0], mid, d.frames[0], d.refs[0]], coverPath(d.dir)); } catch (e) { console.warn('cover failed', e); }
 }
+/** Context block for demo-side prompts: mode + deviation, realism dial, and the PBR skill when the material earns it. */
+let materialSkillCache = '';
+function materialSkill(): string {
+  if (!materialSkillCache) { try { materialSkillCache = readFileSync(path.join(APP_ROOT, 'skills', 'material-pbr', 'SKILL.md'), 'utf8').replace(/^---[\s\S]*?---\n/, ''); } catch { materialSkillCache = ''; } }
+  return materialSkillCache;
+}
+function ctxBlock(meta: PatternMeta): string {
+  const skill = needsMaterialSkill(meta) ? `<<<SKILL material-pbr（按写实度挂层，看第 3–5 节）\n${materialSkill()}\nSKILL\n` : '';
+  return modeBlock(meta) + realismBlock(meta) + skill;
+}
+
 /** frames when there is a video, otherwise the reference photos */
 const imagesOf = (d: { frames: string[]; refs: string[] }) => (d.frames.length ? d.frames : d.refs);
 
@@ -174,7 +186,7 @@ async function stepDemo(jobId: string, id: string): Promise<PatternMeta> {
     await lib.updateMeta(id, { status: 'demo_wip' });
     await mkdir(path.join(d.dir, 'demo'), { recursive: true });
     log('Claude Code 正在生成 demo…');
-    await runClaude({ prompt: demoPrompt(d.spec, imagesOf(d), d.judgment, d.materialCrops, modeBlock(d.meta)), cwd: d.dir, allowedTools: ['Read', 'Write', 'Edit', 'Glob'], onLog: log, signal });
+    await runClaude({ prompt: demoPrompt(d.spec, imagesOf(d), d.judgment, d.materialCrops, ctxBlock(d.meta)), cwd: d.dir, allowedTools: ['Read', 'Write', 'Edit', 'Glob'], onLog: log, signal });
     if (!existsSync(path.join(d.dir, 'demo', 'index.html'))) throw new Error('Claude 没有写出 demo/index.html');
     return lib.readMeta(id);
   });
@@ -258,7 +270,7 @@ async function stepFeedback(jobId: string, id: string, feedback: string, variant
     const stamp = new Date().toISOString().slice(0, 16).replace('T', ' ');
     log(variant ? 'Claude Code 正在按反馈修改这个方案…' : 'Claude Code 正在按反馈修改 demo…');
     const shot = crop ? d.demoScreenshots[1] ?? d.demoScreenshots[0] : undefined;
-    const out = await runClaude({ prompt: feedbackPrompt(feedback, t.history, d.spec, t.file, crop, shot, modeBlock(d.meta)), cwd: d.dir, allowedTools: ['Read', 'Write', 'Edit', 'Glob'], onLog: log, signal });
+    const out = await runClaude({ prompt: feedbackPrompt(feedback, t.history, d.spec, t.file, crop, shot, ctxBlock(d.meta)), cwd: d.dir, allowedTools: ['Read', 'Write', 'Edit', 'Glob'], onLog: log, signal });
     await lib.appendText(id, t.log, `## ${stamp}\n**反馈：** ${feedback}${crop ? `\n（附对照图 ${path.relative(d.dir, crop)}）` : ''}\n\n**修改：** ${out.trim()}\n\n`);
     // give it eyes: screenshot the result and let it compare against the reference itself
     const selfCheck = d.meta.self_check ?? (d.refs.length > 0 || d.frames.length === 0);
@@ -272,7 +284,7 @@ async function stepFeedback(jobId: string, id: string, feedback: string, variant
         await lib.updateMeta(id, { demo_screenshot_count: shots.length });
         const before = (await stat(t.abs)).mtimeMs;
         const final = round === MAX;
-        const note = await runClaude({ prompt: selfCheckPrompt(t.file, shots, imagesOf(d), feedback, crop, round, final, modeBlock(d.meta)), cwd: d.dir, allowedTools: final ? ['Read'] : ['Read', 'Edit'], onLog: log, signal });
+        const note = await runClaude({ prompt: selfCheckPrompt(t.file, shots, imagesOf(d), feedback, crop, round, final, ctxBlock(d.meta)), cwd: d.dir, allowedTools: final ? ['Read'] : ['Read', 'Edit'], onLog: log, signal });
         await lib.appendText(id, t.log, `**自查 ${round}：** ${note.trim()}\n\n`);
         if ((await stat(t.abs)).mtimeMs === before) break; // it looked and left the file alone: report matches the screen
       }
@@ -376,7 +388,7 @@ async function stepMaterialize(jobId: string, id: string): Promise<PatternMeta> 
     if (!d.demoIndex || !d.spec) throw new Error('需要 spec 和定好形的 demo');
     await lib.updateMeta(id, { outline_ok: true });
     log('Claude 正在把材质层挂到轮廓上…');
-    await runClaude({ prompt: materializePrompt(d.spec, imagesOf(d), d.judgment, modeBlock(d.meta)), cwd: d.dir, allowedTools: ['Read', 'Edit', 'Glob'], onLog: log, signal });
+    await runClaude({ prompt: materializePrompt(d.spec, imagesOf(d), d.judgment, ctxBlock(d.meta)), cwd: d.dir, allowedTools: ['Read', 'Edit', 'Glob'], onLog: log, signal });
     log('截图看一眼…');
     const shots = await screenshotDemo(d.demoIndex, path.join(d.dir, 'demo-screenshots'), log);
     await lib.updateMeta(id, { demo_screenshot_count: shots.length });
@@ -401,18 +413,32 @@ async function stepMaterial(jobId: string, id: string, picks: Pick[] = []): Prom
     if (picks.length) for (const [i, p] of picks.entries()) crops.push(...await makeMaterialCropsFrom(p.frame, p.rect, path.join(d.dir, 'material'), `crop-${i + 1}-${path.basename(p.frame, '.png')}`));
     else for (const [i, f] of autoPicks.entries()) crops.push(...await makeMaterialCrops(f, path.join(d.dir, 'material'), `crop-${i + 1}-${path.basename(f, '.png')}`));
     log('Claude 正在拆材质层栈、列待判定问题…');
-    const out = await runClaude({ prompt: materialPrompt(d.spec, crops, imgs, !d.frames.length), cwd: d.dir, allowedTools: ['Read'], onLog: log, signal });
+    const out = await runClaude({ prompt: materialPrompt(d.spec, crops, imgs, !d.frames.length, materialSkill(), modeBlock(d.meta)), cwd: d.dir, allowedTools: ['Read'], onLog: log, signal });
     const md = out.match(/```(?:markdown|md)\s*([\s\S]*?)```/i)?.[1]?.trim();
-    const j = extractJson<{ items?: any[] }>(out.slice(out.lastIndexOf('```json')));
+    const j = extractJson<{ items?: any[]; material?: string; realism?: string }>(out.slice(out.lastIndexOf('```json')));
     if (!md) throw new Error('没解析到材质层栈：\n' + out.slice(0, 300));
     await lib.upsertSpecSection(id, 'Material Layers', md);
     const old = d.judgment ?? [];
+    const REAL = ['flat', 'stylized', 'skeuo', 'realistic'] as const;
+    const inferred = REAL.includes(j?.realism as any) ? (j!.realism as Realism) : undefined;
+    const mp: Partial<PatternMeta> = {};
+    if (j?.material) mp.material = String(j.material).trim();
+    // replicate: the video decides the level; remix/original: the designer decides, so it stays open unless already answered
+    const prevRealism = old.find((o) => o.id === 'realism')?.answer ?? '';
+    if (modeOf(d.meta) === 'replicate' && inferred && !d.meta.realism) mp.realism = inferred;
+    if (Object.keys(mp).length) await lib.updateMeta(id, mp);
+    const realismItem: JudgmentItem = {
+      id: 'realism', kind: 'aesthetic',
+      q: `写实度：这个 demo 允许画到哪一档？${inferred ? `（参考里看起来是「${REALISM_LABEL[inferred]}」）` : ''}`,
+      options: REAL.map((r) => REALISM_LABEL[r]), frame: '', where: '决定挂几层：平面只有底色；风格化加一道高光；拟物加 AO 和物理高光；写实加微观纹理', verify: '同一份层栈，拨档位就是不同风格',
+      answer: prevRealism || (modeOf(d.meta) === 'replicate' && inferred ? REALISM_LABEL[inferred] : ''),
+    };
     const items: JudgmentItem[] = (j?.items ?? []).map((it: any, i: number) => {
       const q = String(it.q ?? '').trim();
       const prev = old.find((o) => o.q === q);
       return { id: prev?.id ?? `j${Date.now().toString(36)}${i}`, kind: (['aesthetic', 'shape', 'mechanism', 'ownership', 'physics'].includes(it.kind) ? it.kind : 'mechanism'), q, options: Array.isArray(it.options) ? it.options.map(String) : [], frame: String(it.frame ?? ''), where: String(it.where ?? ''), verify: String(it.verify ?? ''), answer: prev?.answer ?? '' };
-    }).filter((it: JudgmentItem) => it.q);
-    await lib.saveJudgment(id, items);
+    }).filter((it: JudgmentItem) => it.q && it.id !== 'realism');
+    await lib.saveJudgment(id, [realismItem, ...items]);
     return lib.readMeta(id);
   });
 }
@@ -494,7 +520,12 @@ ipcMain.handle('pipeline:demo', (_e, jobId: string, id: string) => stepDemo(jobI
 ipcMain.handle('pipeline:screenshot', (_e, jobId: string, id: string, compare: boolean) => stepScreenshot(jobId, id, compare));
 ipcMain.handle('pipeline:feedback', (_e, jobId: string, id: string, fb: string, variant?: string, crop?: string) => stepFeedback(jobId, id, fb, variant, crop));
 ipcMain.handle('pipeline:material', (_e, jobId: string, id: string, picks?: Pick[]) => stepMaterial(jobId, id, picks ?? []));
-ipcMain.handle('judgment:save', (_e, id: string, items: JudgmentItem[]) => lib.saveJudgment(id, items));
+ipcMain.handle('judgment:save', async (_e, id: string, items: JudgmentItem[]) => {
+  await lib.saveJudgment(id, items);
+  const r = items.find((i) => i.id === 'realism')?.answer.trim();
+  const level = (Object.keys(REALISM_LABEL) as Realism[]).find((k) => REALISM_LABEL[k] === r);
+  if (level) await lib.updateMeta(id, { realism: level });
+});
 ipcMain.handle('frame:crop', async (_e, id: string, frame: string, r: { x: number; y: number; w: number; h: number }) => {
   const d = await lib.getPattern(id);
   const out = path.join(d.dir, 'crops', `${Date.now().toString(36)}-${path.basename(frame, '.png')}.png`);

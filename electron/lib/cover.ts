@@ -90,6 +90,9 @@ export async function makeMaterialCrops(frame: string, outDir: string, tag: stri
   const dw = Math.round(box.width * 0.5), dh = Math.round(box.height * 0.5);
   const detail = img.crop({ x: box.x + Math.round((box.width - dw) / 2), y: box.y + Math.round((box.height - dh) / 2), width: dw, height: dh }).resize({ width: Math.min(1800, dw * 3) });
   const p2 = path.join(outDir, `${tag}-detail.png`); await writeFile(p2, detail.toPNG()); out.push(p2);
+  const ew = Math.round(box.width * 0.34), eh = Math.round(box.height * 0.6);
+  const edge = img.crop({ x: box.x + box.width - ew, y: box.y + Math.round((box.height - eh) / 2), width: ew, height: eh }).resize({ width: Math.min(1800, ew * 3) });
+  const p3 = path.join(outDir, `${tag}-edge.png`); await writeFile(p3, edge.toPNG()); out.push(p3);
   return out;
 }
 
@@ -117,5 +120,9 @@ export async function makeMaterialCropsFrom(frame: string, r: { x: number; y: nu
   const dw = Math.round(box.width * 0.5), dh = Math.round(box.height * 0.5);
   const detail = img.crop({ x: box.x + Math.round((box.width - dw) / 2), y: box.y + Math.round((box.height - dh) / 2), width: dw, height: dh });
   const p2 = path.join(outDir, `${tag}-detail.png`); await writeFile(p2, detail.resize({ width: Math.min(1800, dw * 3) }).toPNG()); out.push(p2);
+  // edge crop: the right-hand third, where silhouette, fresnel and seams live
+  const ew = Math.round(box.width * 0.34), eh = Math.round(box.height * 0.6);
+  const edge = img.crop({ x: box.x + box.width - ew, y: box.y + Math.round((box.height - eh) / 2), width: ew, height: eh });
+  const p3 = path.join(outDir, `${tag}-edge.png`); await writeFile(p3, edge.resize({ width: Math.min(1800, ew * 3) }).toPNG()); out.push(p3);
   return out;
 }

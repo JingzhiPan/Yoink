@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useStore, runningJobsFor } from '../store';
-import { TAG_FACET_LABEL, MODE_LABEL, modeOf } from '../../shared/types';
+import { TAG_FACET_LABEL, MODE_LABEL, modeOf, REALISM_LABEL } from '../../shared/types';
 import { StatusBadge } from './common';
 import { SpecTab } from './SpecTab';
 import { DemoTab } from './DemoTab';
@@ -31,6 +31,7 @@ export function DetailPanel() {
       <div className="title-row drag">
         <h1><input key={d.meta.name} defaultValue={d.meta.name} onBlur={(e) => e.target.value !== d.meta.name && updateMeta(d.meta.id, { name: e.target.value })} /></h1>
         <span className={`mode-chip ${modeOf(d.meta)}`} title="复刻：对原视频负责 · 二创：对偏离声明负责 · 原创：对你的意图和参考图负责">{MODE_LABEL[modeOf(d.meta)]}</span>
+        {d.meta.realism && <span className="mode-chip" title="写实度：在 Spec 页的判定清单里改">{REALISM_LABEL[d.meta.realism]}{d.meta.material ? ` · ${d.meta.material}` : ''}</span>}
         <StatusBadge status={d.meta.status} />
       </div>
       {modeOf(d.meta) !== 'replicate' && (

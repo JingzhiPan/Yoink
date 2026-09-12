@@ -1,5 +1,5 @@
 import type { PatternMeta, JudgmentItem } from '../../shared/types.js';
-import { MODE_LABEL, modeOf } from '../../shared/types.js';
+import { MODE_LABEL, modeOf, REALISM_LABEL } from '../../shared/types.js';
 
 export const TAG_RULES = `标签规则（严格）：一共 4–6 个英文 kebab-case 标签，按下面五个维度各选最多一个，宁缺毋滥：
 - what：这是个什么东西（slider / card-deck / radial-menu / folder / toggle / modal …）
@@ -72,6 +72,7 @@ export const DEMO_CONVENTION = `demo 约定（必须遵守）：
   状态名用 kebab-case，顺序按交互流程；每个 state 函数执行后页面应静止在该状态（等待动画结束后再 resolve）。至少 2 个状态，最多 6 个。
 - 不要依赖真实鼠标位置：hover 类状态用添加 class 或派发 pointer 事件模拟。
 - 不要用 alert/console 噪音。
+- 微观纹理（颗粒、木纹、拉丝）不贴图：SVG feTurbulence + feComponentTransfer + feDiffuseLighting 生成一层，mix-blend-mode soft-light/overlay 叠上去，feDistantLight 的 azimuth 必须等于光源约定的方向，seed 固定、只渲染一次。
 - 性能：禁止无条件的 requestAnimationFrame / setInterval 死循环。需要按变量重算几何或路径的，只在变化时做：页面加载时一次、收到 window 上的 "yoink:tweak" 事件（外部改 tweak 时会派发，detail.key 是变了的变量）、以及 pointer/transition 事件期间的短时窗口（几百毫秒后自动停）。静止时页面必须是零 JS、零重绘——backdrop-filter 和 blur 层每帧重画会把 GPU 吃满。
 - Tweaks 约定：把最值得调的参数（时长、缓动/弹簧、颜色、尺寸、阈值，6–14 个）写成 :root 上的 CSS 变量，放在 <style id="yoink-tweaks">:root{ --x: 300ms; ... }</style> 这个独立 style 块里（只放变量，一行一个）。JS 里需要这些数值时用
   const tweak = (k) => getComputedStyle(document.documentElement).getPropertyValue(k).trim();
@@ -304,28 +305,36 @@ spec：
 ${spec.slice(0, 5000)}`;
 }
 
-export function materialPrompt(spec: string, crops: string[], images: string[], isRefs: boolean): string {
-  return `你是做 UI 材质还原的设计工程师，懂一点光学。下面是一个 UI 效果的${isRefs ? '参考照片' : '视频关键帧'}和它们的放大裁切图。请全部 Read，然后按四步做。
+export function materialPrompt(spec: string, crops: string[], images: string[], isRefs: boolean, skill: string, mode: string): string {
+  return `${mode}你是做 UI 材质还原的设计工程师，懂一点光学。下面是一个 UI 效果的${isRefs ? '参考照片' : '视频关键帧'}和它们的放大裁切图（主体 2x、中心细节 3x、边缘 3x——远处的区域给的线索互补，三块都要看）。请全部 Read，然后按五步做。
+
+<<<SKILL material-pbr
+${skill}
+SKILL
+
+第零步 · 可信区域。按 skill 第 0 节，在放大图上圈出不可信的区域（过曝 / 环境映射 / 阴影 / 压缩糊掉 / 多元素叠加），列成几行「哪张图的哪块，为什么不可信」。后面凡是从这些区域读出来的东西只能标推断。
 
 放大图（主体 2x、中心细节 3x，看层次以这些为准）：
 ${crops.map((f) => `- ${f}`).join('\n')}
 整图（看位置关系）：
 ${images.map((f) => `- ${f}`).join('\n')}
 
-第一步 · 物理层（先别看图，只根据材质和几何推）。先用一个材质词定性（玻璃 / 塑料薄片 / 亚克力 / 乳胶 / 金属 / 纸 / 果冻 …）并写出几何（薄壁筒、圆环、囊、平板 …），然后列出光学上"应该有"的层：镜面高光的锐度由表面粗糙度决定、菲涅尔带来的边缘压暗或边缘反光、次表面散射带来的透光暖色、薄处淡厚处浓的厚度着色、自阴影和接触阴影落在哪、卷边/圆环的内外高光位置由光源方向决定。每条写依据。最后定一个**光源约定**：方向、软硬、色温；demo 里所有高光和阴影都从这一个光源推，才会互相一致。
+第一步 · 物理层（先别看图，只根据材质和几何推）。先按 skill 第 1 节写一段**通道摘要**（albedo / roughness / metalness / normal / AO / 透光），再推图层。先用一个材质词定性（玻璃 / 塑料薄片 / 亚克力 / 乳胶 / 金属 / 纸 / 果冻 …）并写出几何（薄壁筒、圆环、囊、平板 …），然后列出光学上"应该有"的层：镜面高光的锐度由表面粗糙度决定、菲涅尔带来的边缘压暗或边缘反光、次表面散射带来的透光暖色、薄处淡厚处浓的厚度着色、自阴影和接触阴影落在哪、卷边/圆环的内外高光位置由光源方向决定。每条写依据。最后定一个**光源约定**：方向、软硬、色温；demo 里所有高光和阴影都从这一个光源推，才会互相一致。
 
-第二步 · 照片层。Read 放大图，像 Figma 图层面板那样把主体表面从上到下拆成一层一层：形状、位置（主体自身百分比坐标）、软硬（估 blur 半径）、衰减方向、浓淡（估 opacity）、叠加方式、判断依据（哪张放大图的哪里）。区分"画在单个元素上的"和"多个元素重叠才出现的"。
+第二步 · 照片层。Read 放大图，像 Figma 图层面板那样把主体表面从上到下拆成一层一层（每一层注明挂在哪个通道上）：形状、位置（主体自身百分比坐标）、软硬（估 blur 半径）、衰减方向、浓淡（估 opacity）、叠加方式、判断依据（哪张放大图的哪里）。区分"画在单个元素上的"和"多个元素重叠才出现的"。
 
 第三步 · 交叉对账，得到理想化层栈。逐层判定来源：
 - 照片里有、物理也预期 → 保留，参数按物理和光源约定修正（来源写"交叉"）
 - 照片里有、物理解释不了 → 拍摄噪音（环境反光、眩光、脏点、这盏灯的偶然），默认不画（来源写"照片-噪音"）
 - 物理预期有、照片里看不清 → 补上并标"推断"（来源写"物理"）
-输出一张表，列：# | 层 | 形状 | 位置 | 软硬 | 衰减方向 | 浓淡 | 叠加 | 来源 | 依据。表前先写材质定性一句话和光源约定一行。
+输出一张表，列：# | 层 | 通道 | 形状 | 位置 | 软硬 | 衰减方向 | 浓淡 | 叠加 | 来源 | 依据。表前依次写：材质定性一句话、通道摘要一段、光源约定一行、可信区域几行。
 
-第四步 · 待人工判定清单。凡是第三步里拿不准的对账，每条一个问题，kind 用 "physics"，options 固定给三个："按物理来" / "按照片来" / "丢掉"（可以在每个后面括号补一句这意味着什么）。另外照旧列这四类：aesthetic（审美意图）、shape（形状）、mechanism（机制二选一）、ownership（归属）。每条给候选、看哪张图的哪个位置能判断、在 demo 里怎么验证。只列真会改变做法的，4–10 条。
+第四步 · 写实度。参考图/视频本身呈现的是哪个档位：flat（只有底色和描边）/ stylized（一道高光）/ skeuo（有 AO、粗糙度决定的高光、边缘）/ realistic（有微观纹理、法线噪声）。写进 JSON 的 realism 字段，并在 material 字段写材质词（平面 / 玻璃 / 乳胶 / 金属 / 纸 …）。
+
+第五步 · 待人工判定清单。凡是第三步里拿不准的对账，每条一个问题，kind 用 "physics"，options 固定给三个："按物理来" / "按照片来" / "丢掉"（可以在每个后面括号补一句这意味着什么）。另外照旧列这四类：aesthetic（审美意图）、shape（形状）、mechanism（机制二选一）、ownership（归属）。每条给候选、看哪张图的哪个位置能判断、在 demo 里怎么验证。只列真会改变做法的，4–10 条。
 
 输出格式：先一个 \`\`\`markdown 围栏，内容是第三步的材质定性、光源约定和理想化层栈表（不要标题行）；再一个 \`\`\`json 围栏：
-{"items":[{"kind":"physics|aesthetic|shape|mechanism|ownership","q":"问题一句话","options":["按物理来（…）","按照片来（…）","丢掉"],"frame":"ref-01.jpg","where":"套身左侧边缘","verify":"…"}]}
+{"material":"乳胶","realism":"skeuo","items":[{"kind":"physics|aesthetic|shape|mechanism|ownership","q":"问题一句话","options":["按物理来（…）","按照片来（…）","丢掉"],"frame":"ref-01.jpg","where":"套身左侧边缘","verify":"…"}]}
 
 spec 供参考（不要复述它，你看到的比它细）：
 ${spec.slice(0, 4000)}`;
@@ -343,7 +352,7 @@ ${shots.map((f) => `- ${f}`).join('\n')}
 参考图：
 ${refs.map((f) => `- ${f}`).join('\n')}
 ${crop ? `对照放大图：${crop}\n` : ''}
-检查三件事：① 反馈要求的改动在截图里看得见吗；② 有没有改出穿帮（形状不闭合、层错位、旧形状残留、颜色发灰过曝）；③ 和参考图比，材质读法对不对（高光锐度、边缘压暗、透光感）。
+检查四件事：① 反馈要求的改动在截图里看得见吗；② 有没有改出穿帮（形状不闭合、层错位、旧形状残留、颜色发灰过曝）；③ 和参考图比，材质读法对不对（高光锐度、边缘压暗、透光感）；④ 多状态一致：材质要在每个状态下都读得通——光源没动、形状动了，高光和阴影要跟着表面走，hover 提亮是高光核心变亮不是整体加白。只有初始态对、别的状态不对，说明层是画上去的不是推出来的。
 ${final ? '' : `修的话只改 ${file}，保持 window.__yoink.states 和已有 tweaks 不变。`}最后只输出一段话：你在截图里看到了什么、${final ? '' : '修了什么、'}还有什么需要用户自己定。不要客套。`;
 }
 
@@ -393,4 +402,25 @@ spec（看 Material Layers 和 Craft Details）：
 ${spec.slice(0, 6000)}
 
 改完只回复：挂了哪几层、各引用了哪条路径、哪些参数做成了 tweak。`;
+}
+
+/** Realism dial → which channels the demo may render. */
+export function realismBlock(meta: PatternMeta): string {
+  if (!meta.realism) return '';
+  const rules: Record<string, string> = {
+    flat: '只画 albedo（底色/渐变）和一条描边。不要高光、不要阴影、不要模糊。',
+    stylized: 'albedo + 一道概括的高光 + 一条边缘线。高光形状可以概括，不必物理准确；不要 AO、不要纹理。',
+    skeuo: 'albedo + AO（只在接缝/内角）+ 由粗糙度决定形状的高光 + 菲涅尔边缘 + 透光（薄材质）。所有高光阴影从光源约定推。不要微观纹理。',
+    realistic: '拟物的全部，再加 normal 噪声或纹理（feTurbulence 三件套）、微观颗粒、多层菲涅尔、粗糙度沿纹理变化。',
+  };
+  return `写实度档位：${REALISM_LABEL[meta.realism]}${meta.material ? `（材质：${meta.material}）` : ''}。允许画的层：${rules[meta.realism]}超出档位的层一律不画，哪怕参考图里有。\n`;
+}
+
+/** The PBR skill is only worth its tokens for non-flat material at skeuo+ realism. */
+export function needsMaterialSkill(meta: PatternMeta): boolean {
+  const r = meta.realism;
+  if (r === 'skeuo' || r === 'realistic') return true;
+  if (r === 'flat' || r === 'stylized') return false;
+  const m = (meta.material ?? '').trim();
+  return !!m && !/^(平面|纯色|flat|none|无)$/i.test(m);
 }

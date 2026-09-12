@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { LIBRARY_ROOT } from './paths.js';
 import type { PatternMeta, PatternDetail, PatternStatus, DemoVariant, JudgmentItem, TweakInfo } from '../../shared/types.js';
-import { JUDGMENT_KIND_LABEL, MODE_LABEL, modeOf } from '../../shared/types.js';
+import { JUDGMENT_KIND_LABEL, MODE_LABEL, modeOf, REALISM_LABEL } from '../../shared/types.js';
 
 export function patternDir(id: string) { return path.join(LIBRARY_ROOT, id); }
 
@@ -261,6 +261,7 @@ export function buildHandoff(d: PatternDetail): string | null {
   if (!d.spec) return null;
   const s = d.spec;
   const L: string[] = [`# ${d.meta.name} · 交接`, '', `> pattern \`${d.meta.id}\` · ${d.meta.status} · ${d.meta.tags.join(', ')}`, ''];
+  if (d.meta.realism) L.push(`> 写实度 ${REALISM_LABEL[d.meta.realism]}${d.meta.material ? ` · 材质 ${d.meta.material}` : ''}`, '');
   const mode = modeOf(d.meta);
   if (mode !== 'replicate') {
     L.push(`## ${MODE_LABEL[mode]}${d.meta.origin ? `，分支自「${d.meta.origin.name}」（${d.meta.origin.id}${d.meta.origin.variant ? ' / ' + d.meta.origin.variant : ''}）` : ''}`, '');

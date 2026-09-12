@@ -40,7 +40,12 @@ export interface PatternMeta {
   origin?: { id: string; name: string; variant?: string }; // what a remix was forked from
   deviation?: string;         // remix/original: what is kept from the origin and what is changed; the boundary every edit respects
   outline_ok?: boolean;       // shape-first flow: the silhouette has been confirmed, material may be applied
+  realism?: Realism;          // how many PBR channels the demo is allowed to render
+  material?: string;          // material word from the material pass (玻璃 / 乳胶 / 平面 …)
 }
+export type Realism = 'flat' | 'stylized' | 'skeuo' | 'realistic';
+export const REALISM_LABEL: Record<Realism, string> = { flat: '平面', stylized: '风格化', skeuo: '拟物', realistic: '写实' };
+export const REALISM_ORDER: Realism[] = ['flat', 'stylized', 'skeuo', 'realistic'];
 export type PatternMode = 'replicate' | 'remix' | 'original';
 export const MODE_LABEL: Record<PatternMode, string> = { replicate: '复刻', remix: '二创', original: '原创' };
 /** Mode is derived when not stored: forked → remix, no video → original, else replicate. */
