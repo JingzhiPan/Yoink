@@ -18,6 +18,7 @@ export function SpecTab({ d }: { d: PatternDetail }) {
   const [editing, setEditing] = useState(false);
   const [showRaw, setShowRaw] = useState(false);
   const [matPick, setMatPick] = useState(false);
+  const [menu, setMenu] = useState(false);
   useEffect(() => { setSpec(d.spec ?? ''); }, [d.spec]);
   const dirty = spec !== (d.spec ?? '');
   const id = d.meta.id;
@@ -49,23 +50,29 @@ export function SpecTab({ d }: { d: PatternDetail }) {
         {d.spec && (
           <>
             <div className="row">
-              <h3>{d.specVerified ? 'Final spec' : 'Verified spec'}</h3><span className="spacer" />
+              <h3>{showRaw ? (d.specVerified ? '核对长版' : '原始 spec') : d.specVerified ? 'Final spec' : 'Verified spec'}</h3>
+              <span className="hint">{d.specVerified ? '确认 demo 时精简过' : '已逐帧核对'}{d.judgment ? ` · 已拆材质，${d.judgment.filter((j) => !j.answer.trim()).length ? `待判定 ${d.judgment.filter((j) => !j.answer.trim()).length}` : '判定完'}` : ''}</span>
+              <span className="spacer" />
               {editing ? (<>
                 <button className="sm" onClick={() => { setSpec(d.spec ?? ''); setEditing(false); }}>取消</button>
                 <button className="primary sm" disabled={!dirty} onClick={async () => { await saveSpec(id, spec); setEditing(false); }}>保存</button>
-              </>) : (<>
-                <button className="sm" onClick={() => setShowRaw(!showRaw)}>{showRaw ? '看当前' : (d.specVerified ? '看核对长版' : '看原始')}</button>
-                <button className="sm" disabled={running} onClick={() => verify(id)} title="用当前原始 spec 重新核对">重新核对</button>
-                <button className="sm" disabled={running} onClick={() => setMatPick(true)} title="先框出主体，Claude 看放大图拆材质层栈，并列出只有你能定的问题">{d.judgment ? '重做材质拆解' : '材质拆解 + 待判定'}</button>
-                {d.demoIndex && <button className="sm" disabled={running} onClick={() => useStore.getState().confirmDemo(id)} title="把 demo 反馈记录和最终代码合并回 spec，并精简">精简 spec</button>}
+              </>) : showRaw ? <button className="sm" onClick={() => setShowRaw(false)}>回到当前</button> : (<>
                 <button className="sm" onClick={() => setEditing(true)}>编辑</button>
+                <span className="menu-wrap">
+                  <button className="sm" onClick={() => setMenu(!menu)} title="不常用的">⋯</button>
+                  {menu && <div className="menu" onMouseLeave={() => setMenu(false)}>
+                    <button onClick={() => { setMenu(false); setShowRaw(true); }}>{d.specVerified ? '看核对长版' : '看原始 spec'}</button>
+                    <button disabled={running} onClick={() => { setMenu(false); verify(id); }}>重新核对（会接着拆材质）</button>
+                    <button disabled={running} onClick={() => { setMenu(false); setMatPick(true); }}>{d.judgment ? '重做材质拆解（框主体）' : '材质拆解（框主体）'}</button>
+                  </div>}
+                </span>
               </>)}
             </div>
             {editing ? <textarea className="mono" style={{ minHeight: 320 }} value={spec} onChange={(e) => setSpec(e.target.value)} />
               : <Markdown text={showRaw ? (d.specVerified ?? d.rawSpec ?? '') : d.spec} />}
           </>
         )}
-        {d.spec && !d.judgment && !running && <div className="callout">下一步建议先做「材质拆解 + 待判定」：Claude 看放大图拆出高光/雾面/边缘的层栈，再把它判断不了的问题列给你。这一步能省掉后面大部分反馈轮次。</div>}
+        {d.spec && !d.judgment && !running && <div className="callout">核对完了还没拆材质。<button className="sm" style={{ marginLeft: 8 }} onClick={() => setMatPick(true)}>框主体，拆材质</button></div>}
         {matPick && <RegionPicker frames={d.frames} onClose={() => setMatPick(false)} onPick={() => {}} multi={{ title: '框出要拆材质的主体', sub: '选一帧，框住那个元素（比如一张卡）。最多三块；录屏里有代码编辑器之类的东西就别框进去。', onDone: (picks) => { setMatPick(false); material(id, picks); } }} />}
         {d.judgment && <Judgment items={d.judgment} frames={d.frames} onSave={(items) => saveJudgment(id, items)} />}
         {d.materialCrops.length > 0 && (<><h3>材质放大图 · {d.materialCrops.length}</h3><Gallery files={d.materialCrops} /></>)}

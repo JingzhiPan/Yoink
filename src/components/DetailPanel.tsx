@@ -48,8 +48,8 @@ export function DetailPanel() {
       <div className="tabs">
         <button className={tab === 'spec' ? 'on' : ''} onClick={() => setTab('spec')}>Spec</button>
         <button className={tab === 'demo' ? 'on' : ''} disabled={!hasSpec} onClick={() => setTab('demo')}>Demo</button>
-        <button className={tab === 'skill' ? 'on' : ''} disabled={!skillUnlocked} onClick={() => setTab('skill')} title={skillUnlocked ? '' : '确认 demo 后解锁'}>Skill</button>
         <button className={tab === 'handoff' ? 'on' : ''} disabled={!hasSpec} onClick={() => setTab('handoff')} title="给接手的设计师/工程师看的一页">交接</button>
+        <button className={tab === 'skill' ? 'on' : ''} disabled={!skillUnlocked} onClick={() => setTab('skill')} title={skillUnlocked ? '' : '确认 demo 后解锁'}>Skill</button>
       </div>
       {tab === 'spec' && <SpecTab d={d} />}
       {tab === 'demo' && <DemoTab d={d} />}

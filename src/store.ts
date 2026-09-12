@@ -112,13 +112,16 @@ export const useStore = create<State>((set, get) => {
           await wrap(meta.id, 'parse', (j) => api.parseAuto(j, meta.id, method));
           const m2 = get().patterns.find((x) => x.id === meta.id);
           if (m2?.status === 'raw_spec') await get().verify(meta.id);
-          if (get().patterns.find((x) => x.id === meta.id)?.status === 'verified') await get().material(meta.id);
         }
         if (paths.length === 1) await get().open(meta.id);
       }
     },
     async storeRaw(id, text) { await api.storeRaw(id, text, 'manual'); await afterStep(id); },
-    verify: (id) => wrap(id, 'verify', (j) => api.verify(j, id)),
+    async verify(id) {
+      await wrap(id, 'verify', (j) => api.verify(j, id));
+      // the material pass is part of verification: layer stack + the questions only a human can answer
+      if (get().patterns.find((x) => x.id === id)?.status === 'verified') await get().material(id);
+    },
     generateDemo: (id) => wrap(id, 'demo', (j) => api.generateDemo(j, id)),
     screenshot: (id, compare) => wrap(id, 'screenshot', (j) => api.screenshotDemo(j, id, compare)),
     feedback: (id, text, variant, crop) => wrap(id, 'feedback', (j) => api.sendFeedback(j, id, text, variant, crop), variant),
