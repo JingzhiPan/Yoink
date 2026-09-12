@@ -22,6 +22,19 @@ export const SPEC_FORMAT_HINT = `统一 spec 格式（Markdown）：
 
 三栏原则：spec 里每一条陈述都属于且只属于三类之一——**证据**（视频/照片里看得到的，默认，不用标）、**决定**（用户定的，写进 ## Design Decisions）、**推断**（模型按物理、惯例或"应该是这样"补的，写进 ## Inferred，每条注明依据）。不确定的东西不要写成证据。`;
 
+/** Intent: what this is and what it should express. The designer's words plus what the pipeline already knows. */
+export function intentBlock(meta: PatternMeta, spec: string | null): string {
+  const core = spec?.match(/^## Core Principle[^\n]*\n([\s\S]*?)(?=^## |(?![\s\S]))/m)?.[1]?.trim();
+  const L: string[] = ['这是什么、想表现什么（先读完这一段再看图）：'];
+  L.push(`- 模式：${MODE_LABEL[modeOf(meta)]}${meta.origin ? `，分支自「${meta.origin.name}」` : ''}`);
+  if (meta.tags.length) L.push(`- 标签：${meta.tags.join(', ')}`);
+  if (meta.material || meta.realism) L.push(`- 已定的：${[meta.material, meta.realism ? `写实度 ${REALISM_LABEL[meta.realism]}` : ''].filter(Boolean).join('，')}`);
+  if (meta.deviation?.trim()) L.push(`- 偏离声明：${meta.deviation.trim()}`);
+  if (core) L.push(`- 原 spec 的设计意图：${core.slice(0, 600)}`);
+  L.push(meta.intent?.trim() ? `- **用户说想表现的**：${meta.intent.trim()}` : '- 用户还没写想表现什么。从上面的信息和图里推一个，并在回复里点名让用户确认。');
+  return L.join('\n') + '\n';
+}
+
 /** Mode context every demo-side prompt gets: what this pattern is relative to its origin, and what edits must respect. */
 export function modeBlock(meta: PatternMeta): string {
   const mode = modeOf(meta);
@@ -305,12 +318,14 @@ spec：
 ${spec.slice(0, 5000)}`;
 }
 
-export function materialPrompt(spec: string, crops: string[], images: string[], isRefs: boolean, skill: string, mode: string): string {
-  return `${mode}你是做 UI 材质还原的设计工程师，懂一点光学。下面是一个 UI 效果的${isRefs ? '参考照片' : '视频关键帧'}和它们的放大裁切图（主体 2x、中心细节 3x、边缘 3x——远处的区域给的线索互补，三块都要看）。请全部 Read，然后按五步做。
+export function materialPrompt(spec: string, crops: string[], images: string[], isRefs: boolean, skill: string, mode: string, intent = ''): string {
+  return `${intent}${mode}你是做 UI 材质还原的设计工程师，懂一点光学。下面是一个 UI 效果的${isRefs ? '参考照片' : '视频关键帧'}和它们的放大裁切图（主体 2x、中心细节 3x、边缘 3x——远处的区域给的线索互补，三块都要看）。请全部 Read，然后按五步做。
 
 <<<SKILL material-pbr
 ${skill}
 SKILL
+
+第负一步 · 意图。用自己的话复述：这是个什么东西、用户想让它表现什么（柔软 / 廉价 / 昂贵 / 冷 / 有分量 / 轻 …）、所以材质应该服务于什么、哪些物理上正确但和意图相反的东西要压掉。三四句，写在最前面；之后的灵魂、通道、层栈都要对得上这段。
 
 第零步 · 可信区域。按 skill 第 0 节，在放大图上圈出不可信的区域（过曝 / 环境映射 / 阴影 / 压缩糊掉 / 多元素叠加），列成几行「哪张图的哪块，为什么不可信」。后面凡是从这些区域读出来的东西只能标推断。
 

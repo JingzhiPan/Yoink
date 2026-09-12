@@ -261,6 +261,7 @@ export function buildHandoff(d: PatternDetail): string | null {
   if (!d.spec) return null;
   const s = d.spec;
   const L: string[] = [`# ${d.meta.name} · 交接`, '', `> pattern \`${d.meta.id}\` · ${d.meta.status} · ${d.meta.tags.join(', ')}`, ''];
+  if (d.meta.intent?.trim()) L.push('## 想表现什么', '', d.meta.intent.trim(), '');
   if (d.meta.realism) L.push(`> 写实度 ${REALISM_LABEL[d.meta.realism]}${d.meta.material ? ` · 材质 ${d.meta.material}` : ''}`, '');
   const mode = modeOf(d.meta);
   if (mode !== 'replicate') {

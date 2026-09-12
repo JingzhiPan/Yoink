@@ -40,6 +40,7 @@ export interface PatternMeta {
   origin?: { id: string; name: string; variant?: string }; // what a remix was forked from
   deviation?: string;         // remix/original: what is kept from the origin and what is changed; the boundary every edit respects
   outline_ok?: boolean;       // shape-first flow: the silhouette has been confirmed, material may be applied
+  intent?: string;            // what this thing is and what it should express, in the designer's words
   realism?: Realism;          // how many PBR channels the demo is allowed to render
   material?: string;          // material word from the material pass (玻璃 / 乳胶 / 平面 …)
 }

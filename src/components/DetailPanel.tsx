@@ -34,6 +34,10 @@ export function DetailPanel() {
         {d.meta.realism && <span className="mode-chip" title="写实度：在 Spec 页的判定清单里改">{REALISM_LABEL[d.meta.realism]}{d.meta.material ? ` · ${d.meta.material}` : ''}</span>}
         <StatusBadge status={d.meta.status} />
       </div>
+      <div className="deviation">
+        <div className="hint">想表现什么（每一步 Claude 都先读这句：这是个什么东西、该给人什么感觉，物理上对但和它相反的东西会被压掉）</div>
+        <textarea key={d.meta.id + '-intent'} defaultValue={d.meta.intent ?? ''} placeholder="例：一层柔软的乳胶薄膜，能被按回去；要有产品感但不油腻。" onBlur={(e) => e.target.value !== (d.meta.intent ?? '') && updateMeta(d.meta.id, { intent: e.target.value })} />
+      </div>
       {modeOf(d.meta) !== 'replicate' && (
         <div className="deviation">
           <div className="hint">{d.meta.origin ? <>分支自「{d.meta.origin.name}」{d.meta.origin.variant ? ` / ${d.meta.origin.variant}` : ''} · </> : null}偏离声明（每次修改的边界；保留的部分对原作负责，改掉的部分对参考图和你负责）</div>
