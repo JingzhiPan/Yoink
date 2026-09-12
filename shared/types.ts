@@ -76,6 +76,7 @@ export interface PatternDetail {
   consolidateDiff: string | null;    // consolidate-diff.md: what the demo rounds changed vs the verified spec
   handoff: string | null;            // handoff.md: facts / decisions / open / tweaks, built from the files above
   tweakList: TweakInfo[];            // parsed from demo/index.html manifest
+  traits: Traits | null;             // traits.json: the pattern taken apart into reusable parts
   comparePairs: ComparePair[] | null; // demo-compare.json: which original frame each demo shot corresponds to
   skillMd: string | null;
   skillFiles: string[];        // relative paths inside skill/
@@ -87,6 +88,14 @@ export type JudgmentKind = 'aesthetic' | 'shape' | 'mechanism' | 'ownership' | '
 export const JUDGMENT_KIND_LABEL: Record<JudgmentKind, string> = { aesthetic: '审美意图', shape: '形状', mechanism: '机制二选一', ownership: '归属', physics: '物理 vs 照片' };
 /** One thing the frames can't settle; the designer answers it before/after the demo. */
 export interface JudgmentItem { id: string; kind: JudgmentKind; q: string; options: string[]; frame: string; where: string; verify: string; answer: string }
+/** The pattern taken apart so it can be ported, combined, or grown into a family. */
+export interface Traits {
+  structure: { outline: string; layout: string; states: string[] };
+  material: { word: string; realism: string; soul: string; light: string; layers: string[] };
+  motion: { name: string; trigger: string; curve: string; duration: string; depends_on?: string }[];
+  replaceable: { key: string; what: string; range: string }[];
+  fixed: string[];
+}
 export interface TweakInfo { key: string; label: string; type: string; unit?: string }
 
 export interface ComparePair { shot: string; frame: string | null; note: string }
@@ -101,7 +110,7 @@ export interface Settings {
   ffmpegPath: string | null;
 }
 
-export type JobKind = 'extract' | 'parse' | 'verify' | 'demo' | 'screenshot' | 'feedback' | 'consolidate' | 'tweaks' | 'skill' | 'retag' | 'material' | 'outline' | 'materialize';
+export type JobKind = 'extract' | 'parse' | 'verify' | 'demo' | 'screenshot' | 'feedback' | 'consolidate' | 'tweaks' | 'skill' | 'retag' | 'material' | 'outline' | 'materialize' | 'traits' | 'distill';
 
 export interface JobEvent {
   jobId: string;

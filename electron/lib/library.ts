@@ -2,7 +2,7 @@ import { mkdir, readdir, readFile, writeFile, copyFile, stat, rm } from 'node:fs
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { LIBRARY_ROOT } from './paths.js';
-import type { PatternMeta, PatternDetail, PatternStatus, DemoVariant, JudgmentItem, TweakInfo } from '../../shared/types.js';
+import type { PatternMeta, PatternDetail, PatternStatus, DemoVariant, JudgmentItem, TweakInfo, Traits } from '../../shared/types.js';
 import { JUDGMENT_KIND_LABEL, MODE_LABEL, modeOf, REALISM_LABEL } from '../../shared/types.js';
 
 export function patternDir(id: string) { return path.join(LIBRARY_ROOT, id); }
@@ -95,6 +95,7 @@ async function getPatternRaw(id: string): Promise<PatternDetail> {
     materialCrops: await listPngs(path.join(dir, 'material')),
     consolidateDiff: await readOpt(path.join(dir, 'consolidate-diff.md')),
     handoff: null, tweakList: [],
+    traits: await readJsonOpt<Traits>(path.join(dir, 'traits.json')),
     comparePairs: await readJsonOpt(path.join(dir, 'demo-compare.json')),
     skillMd: await readOpt(path.join(dir, 'skill', 'SKILL.md')),
     skillFiles: await walk(path.join(dir, 'skill')),
@@ -291,6 +292,16 @@ export function buildHandoff(d: PatternDetail): string | null {
     for (const t of d.tweakList) L.push(`- \`${t.key}\` — ${t.label}${t.type !== 'range' ? `（${t.type}）` : t.unit ? `（${t.unit}）` : ''}`);
     L.push('');
   }
+  if (d.traits) {
+    const t = d.traits;
+    L.push('## 零件（traits.json，供移植 / 组合 / 家族用）', '');
+    L.push(`- **结构**：${t.structure.outline}；布局：${t.structure.layout}；状态：${t.structure.states.join(' → ')}`);
+    L.push(`- **材质**：${t.material.word} · ${t.material.realism}；灵魂：${t.material.soul}；光源：${t.material.light}`);
+    for (const m of t.motion) L.push(`- **动效** ${m.name}：${m.trigger} → ${m.curve} ${m.duration}${m.depends_on ? `（依赖 ${m.depends_on}）` : ''}`);
+    if (t.replaceable.length) L.push(`- **可替换**：${t.replaceable.map((r) => `\`${r.key}\` ${r.what}（${r.range}）`).join('；')}`);
+    if (t.fixed.length) L.push('- **不可动**：', ...t.fixed.map((f) => `  - ${f}`));
+    L.push('');
+  }
   if (d.variants.length) { L.push('## 方案', '', ...d.variants.map((v) => `- ${v.name}（variants/${v.slug}/）`), ''); }
   return L.join('\n');
 }
@@ -310,4 +321,42 @@ export async function upsertSpecSection(id: string, name: string, body: string) 
   else if (/^## Tags/m.test(s)) s = s.replace(/^## Tags/m, block + '## Tags');
   else s = s.trimEnd() + '\n\n' + block;
   await writeFile(p, s);
+}
+
+// ─── leaf skills: one page per material / geometry / motion problem, grown from confirmed patterns ───
+export const LEAF_KINDS = ['materials', 'geometry', 'motion'] as const;
+export type LeafKind = typeof LEAF_KINDS[number];
+export interface Leaf { kind: LeafKind; slug: string; file: string; match: string[]; text: string; builtin: boolean }
+export const LEAF_ROOT = path.join(LIBRARY_ROOT, '_skills');
+
+/** Read every leaf from the library (grown) and the app's seed folder (builtin). */
+export async function listLeaves(seedDir: string): Promise<Leaf[]> {
+  const out: Leaf[] = [];
+  for (const [root, builtin] of [[seedDir, true], [LEAF_ROOT, false]] as const) {
+    for (const kind of LEAF_KINDS) {
+      const d = path.join(root, kind);
+      if (!existsSync(d)) continue;
+      for (const f of (await readdir(d)).filter((x) => x.endsWith('.md')).sort()) {
+        const text = await readFile(path.join(d, f), 'utf8');
+        const fm = text.match(/^---\n([\s\S]*?)\n---/);
+        const match = fm?.[1].match(/^match:\s*\[(.*)\]/m)?.[1].split(',').map((x) => x.trim().replace(/^["']|["']$/g, '')).filter(Boolean) ?? [];
+        out.push({ kind, slug: f.replace(/\.md$/, ''), file: path.join(d, f), match: match.length ? match : [f.replace(/\.md$/, '')], text, builtin });
+      }
+    }
+  }
+  return out;
+}
+
+/** Leaves whose match words hit the pattern's material word or tags. At most `max`, library leaves win over builtins on a tie. */
+export function leavesFor(meta: PatternMeta, leaves: Leaf[], max = 3): Leaf[] {
+  const hay = [meta.material ?? '', ...meta.tags, ...(meta.tech_hints ?? []), meta.name].join(' ').toLowerCase();
+  const scored = leaves.map((l) => ({ l, s: l.match.reduce((n, m) => n + (m && hay.includes(m.toLowerCase()) ? 1 : 0), 0) + (l.builtin ? 0 : 0.1) })).filter((x) => x.s >= 1).sort((a, b) => b.s - a.s);
+  const seen = new Set<string>(); const out: Leaf[] = [];
+  for (const { l } of scored) { const k = l.kind + '/' + l.slug; if (seen.has(k)) continue; seen.add(k); out.push(l); if (out.length >= max) break; }
+  return out;
+}
+
+export async function writeLeaf(kind: LeafKind, slug: string, text: string): Promise<string> {
+  const d = path.join(LEAF_ROOT, kind); await mkdir(d, { recursive: true });
+  const f = path.join(d, slug.replace(/[^a-z0-9-]/g, '-') + '.md'); await writeFile(f, text.trim() + '\n'); return f;
 }

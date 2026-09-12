@@ -52,6 +52,8 @@ interface State {
   deleteVariant(id: string, slug: string): Promise<void>;
   forkPattern(id: string, name: string, fromVariant?: string, deviation?: string): Promise<void>;
   outline(id: string, brief: string): Promise<void>;
+  traits(id: string): Promise<void>;
+  distill(id: string): Promise<void>;
   materialize(id: string): Promise<void>;
 }
 
@@ -158,6 +160,8 @@ export const useStore = create<State>((set, get) => {
     async deleteVariant(id, slug) { await api.deleteVariant(id, slug); set({ previewVariant: null }); await afterStep(id); },
     async forkPattern(id, name, fromVariant, deviation) { const m = await api.forkPattern(id, name, fromVariant, deviation); await get().refreshList(); await get().open(m.id); },
     outline: (id, brief) => wrap(id, 'outline', (j) => api.outline(j, id, brief)),
+    traits: (id) => wrap(id, 'traits', (j) => api.traits(j, id)),
+    distill: (id) => wrap(id, 'distill', (j) => api.distill(j, id)),
     materialize: (id) => wrap(id, 'materialize', (j) => api.materialize(j, id)),
     async refreshCover(id) { await api.refreshCover(id); await afterStep(id); },
     async deletePattern(id) { await api.deletePattern(id); if (get().current?.meta.id === id) get().goHome(); if (get().selected?.meta.id === id) set({ selected: null }); await get().refreshList(); },

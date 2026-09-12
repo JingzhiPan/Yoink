@@ -95,6 +95,39 @@ server.registerTool('get_handoff', {
   return text(await readFile(p, 'utf8'));
 });
 
+server.registerTool('get_traits', {
+  description: 'Return traits.json: the pattern taken apart into parts — structure (outline path, layout rule, states), material (word, realism, one-line rule, light, layers), motion (trigger/curve/duration/dependencies), replaceable tokens with safe ranges, and fixed constraints. Use it to port a pattern to another brand/stack (change only replaceable), combine patterns (align light/timing, respect fixed), or build a family.',
+  inputSchema: { pattern_id: z.string() },
+}, async ({ pattern_id }) => {
+  const p = path.join(dir(pattern_id), 'traits.json');
+  if (!existsSync(p)) return fail(`pattern ${pattern_id} has no traits yet (confirm its demo in YOINK)`);
+  return text(JSON.parse(await readFile(p, 'utf8')));
+});
+
+const LEAVES = path.join(ROOT, '_skills');
+server.registerTool('list_leaves', {
+  description: 'List leaf skills grown from confirmed patterns: one page per material / geometry / motion problem (materials/latex, geometry/thin-shell, motion/spring …) with match words. Load the relevant one with get_leaf before implementing a similar material, shape or motion.',
+  inputSchema: {},
+}, async () => {
+  const out = [];
+  for (const kind of ['materials', 'geometry', 'motion']) {
+    const d = path.join(LEAVES, kind); if (!existsSync(d)) continue;
+    for (const f of (await readdir(d)).filter((x) => x.endsWith('.md'))) {
+      const t = await readFile(path.join(d, f), 'utf8');
+      out.push({ kind, slug: f.replace(/\.md$/, ''), match: t.match(/^match:\s*\[(.*)\]/m)?.[1] ?? '', from: t.match(/^from:\s*(.*)$/m)?.[1] ?? '' });
+    }
+  }
+  return text(out);
+});
+server.registerTool('get_leaf', {
+  description: 'Return one leaf skill (markdown): rule, channels/structure, recipe, pitfalls, tweak suggestions.',
+  inputSchema: { kind: z.enum(['materials', 'geometry', 'motion']), slug: z.string() },
+}, async ({ kind, slug }) => {
+  const p = path.join(LEAVES, kind, slug.replace(/[^a-z0-9-]/g, '-') + '.md');
+  if (!existsSync(p)) return fail(`no leaf ${kind}/${slug}`);
+  return text(await readFile(p, 'utf8'));
+});
+
 server.registerTool('get_skill', {
   description: 'Return the packaged skill: SKILL.md content plus absolute paths of the reusable component code. Only available when status is skill_ready (or demo_done with a generated skill).',
   inputSchema: { pattern_id: z.string() },

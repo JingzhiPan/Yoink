@@ -441,3 +441,67 @@ export function needsMaterialSkill(meta: PatternMeta): boolean {
   const m = (meta.material ?? '').trim();
   return !!m && !/^(平面|纯色|flat|none|无)$/i.test(m);
 }
+
+/** Take a confirmed pattern apart into parts other patterns can reuse. */
+export function traitsPrompt(spec: string, handoff: string, tweaks: string): string {
+  return `把这个已确认的 UI pattern 拆成零件清单，给以后要移植（换品牌换技术栈）、组合（和别的 pattern 拼）、做家族（同一材质多个成员）的人用。用 Read 读 demo/index.html 看真实实现；spec、交接页、tweaks 清单在下面。
+
+只输出一个 \`\`\`json 围栏，结构严格如下（中文写值，路径/变量名保留原文）：
+{
+  "structure": { "outline": "主体是什么形状、由哪条路径/哪个函数生成、几个控制点", "layout": "多个主体怎么排布的规则（函数或一句话）", "states": ["initial", "..."] },
+  "material": { "word": "材质词", "realism": "flat|stylized|skeuo|realistic", "soul": "材质的灵魂一句话", "light": "光源约定一行", "layers": ["每层一句：层名 · 通道 · 引用的路径/元素"] },
+  "motion": [{ "name": "交互名", "trigger": "触发", "curve": "缓动/弹簧", "duration": "时长", "depends_on": "依赖哪个别的交互或状态（可省略）" }],
+  "replaceable": [{ "key": "--var 或选择器", "what": "这是什么（品牌色/圆角/字体/尺寸/时长）", "range": "能换成什么范围，换了不露馅" }],
+  "fixed": ["不可动的：灵魂那一句 + Craft Details 里不这么做就露馅的，每条一句"]
+}
+replaceable 只列真的能换的 token，不要把材质参数也塞进去；fixed 是组装时的硬约束，宁多勿少。
+
+spec：
+${spec.slice(0, 7000)}
+
+交接页：
+${handoff.slice(0, 3000)}
+
+tweaks：
+${tweaks}`;
+}
+
+/** Grow leaf skills from a confirmed pattern: one page per material / geometry / motion problem it solved. */
+export function distillPrompt(meta: PatternMeta, spec: string, traits: string, existing: { kind: string; slug: string; text: string }[]): string {
+  return `这个 pattern 已经确认。把它学到的东西沉淀成可复用的 skill 叶子，以后别的 pattern 遇到同类问题直接加载，不用重推。
+
+叶子分三类目录：materials（一种材质怎么看怎么画）、geometry（一种造型问题怎么建：薄壁筒、扇形堆叠、黏连…）、motion（一种动效问题：弹簧跟手、景深切换…）。一条 pattern 通常产出 1–3 片，只写这条 pattern 真正解决了的问题，别泛写。
+
+每片叶子固定格式：
+---
+match: [匹配词1, 匹配词2, 英文别名]   ← 材质词 / 标签 / 常用叫法，命中即加载
+from: ${meta.id}
+---
+# <名字>
+## 灵魂
+一句话：什么决定了它的全部表现
+## 通道 / 结构
+材质叶子写通道摘要；造型叶子写路径怎么生成、几个控制点、变形怎么插值；动效叶子写状态机和参数
+## 配方
+按层/按步骤，能直接照着写代码的程度，引用 CSS/SVG 技术名
+## 露馅
+3–6 条"不这么做就穿帮"
+## Tweaks 建议
+该抽哪 4–8 个参数，各自范围
+
+已有的同类叶子（有就在它基础上合并改写，保留别人的经验，不要另起一片重名的）：
+${existing.length ? existing.map((e) => `<<<LEAF ${e.kind}/${e.slug}\n${e.text}\nLEAF`).join('\n') : '（无）'}
+
+输出：每片叶子一个围栏，围栏信息串写目标路径，例如 \`\`\`leaf materials/latex ；围栏里是完整文件内容（含 frontmatter）。不要别的输出。
+
+spec：
+${spec.slice(0, 6000)}
+
+零件清单：
+${traits}`;
+}
+
+export function leavesBlock(leaves: { kind: string; slug: string; text: string }[]): string {
+  if (!leaves.length) return '';
+  return leaves.map((l) => `<<<LEAF ${l.kind}/${l.slug}（库里沉淀的经验，优先于你自己的推断）\n${l.text.replace(/^---[\s\S]*?---\n/, '')}\nLEAF`).join('\n') + '\n';
+}

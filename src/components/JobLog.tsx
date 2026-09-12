@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import type { Job } from '../store';
 import { api } from '../api';
 
-const KIND_LABEL: Record<Job['kind'], string> = { extract: '抽帧', parse: '解析', verify: '交叉核对', demo: '生成 demo', screenshot: '截图比对', feedback: '按反馈修改', consolidate: '合并校正 · 精简 spec', tweaks: '抽取 tweaks', skill: '打包 skill', retag: '整理标签', material: '材质拆解 · 待判定', outline: '定形', materialize: '上材质' };
+const KIND_LABEL: Record<Job['kind'], string> = { extract: '抽帧', parse: '解析', verify: '交叉核对', demo: '生成 demo', screenshot: '截图比对', feedback: '按反馈修改', consolidate: '合并校正 · 精简 spec', tweaks: '抽取 tweaks', skill: '打包 skill', retag: '整理标签', material: '材质拆解 · 待判定', outline: '定形', materialize: '上材质', traits: '拆零件', distill: '沉淀 skill 叶子' };
 
 export function JobLog({ job }: { job: Job | undefined }) {
   const ref = useRef<HTMLDivElement>(null);

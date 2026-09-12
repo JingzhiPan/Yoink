@@ -7,7 +7,7 @@ import { LIBRARY_ROOT, binary } from './lib/paths.js';
 import { extractFrames, makeUploadCopy } from './lib/ffmpeg.js';
 import { runClaude, extractJson } from './lib/claude.js';
 import { parseSpec, slugify } from './lib/parser.js';
-import { verifyPrompt, demoPrompt, feedbackPrompt, comparePrompt, skillPrompt, computerUsePrompt, consolidatePrompt, tweaksPrompt, retagPrompt, materialPrompt, selfCheckPrompt, modeBlock, outlinePrompt, materializePrompt, realismBlock, needsMaterialSkill, intentBlock } from './lib/prompts.js';
+import { verifyPrompt, demoPrompt, feedbackPrompt, comparePrompt, skillPrompt, computerUsePrompt, consolidatePrompt, tweaksPrompt, retagPrompt, materialPrompt, selfCheckPrompt, modeBlock, outlinePrompt, materializePrompt, realismBlock, needsMaterialSkill, intentBlock, traitsPrompt, distillPrompt, leavesBlock } from './lib/prompts.js';
 import { screenshotDemo } from './lib/screenshot.js';
 import { parseWithOpenAI } from './lib/openai.js';
 import { makeCover, coverPath, makeMaterialCrops, makeMaterialCropsFrom, cropRegion } from './lib/cover.js';
@@ -110,9 +110,13 @@ function materialSkill(): string {
   if (!materialSkillCache) { try { materialSkillCache = readFileSync(path.join(APP_ROOT, 'skills', 'material-pbr', 'SKILL.md'), 'utf8').replace(/^---[\s\S]*?---\n/, ''); } catch { materialSkillCache = ''; } }
   return materialSkillCache;
 }
-function ctxBlock(meta: PatternMeta, spec: string | null = null): string {
+const SEED_LEAVES = path.join(APP_ROOT, 'skills', 'leaves');
+async function leafBlock(meta: PatternMeta): Promise<string> {
+  try { return leavesBlock(lib.leavesFor(meta, await lib.listLeaves(SEED_LEAVES))); } catch { return ''; }
+}
+async function ctxBlock(meta: PatternMeta, spec: string | null = null): Promise<string> {
   const skill = needsMaterialSkill(meta) ? `<<<SKILL material-pbr（按写实度挂层，看第 3–5 节）\n${materialSkill()}\nSKILL\n` : '';
-  return intentBlock(meta, spec) + modeBlock(meta) + realismBlock(meta) + skill;
+  return intentBlock(meta, spec) + modeBlock(meta) + realismBlock(meta) + skill + await leafBlock(meta);
 }
 
 /** frames when there is a video, otherwise the reference photos */
@@ -186,7 +190,7 @@ async function stepDemo(jobId: string, id: string): Promise<PatternMeta> {
     await lib.updateMeta(id, { status: 'demo_wip' });
     await mkdir(path.join(d.dir, 'demo'), { recursive: true });
     log('Claude Code 正在生成 demo…');
-    await runClaude({ prompt: demoPrompt(d.spec, imagesOf(d), d.judgment, d.materialCrops, ctxBlock(d.meta, d.spec)), cwd: d.dir, allowedTools: ['Read', 'Write', 'Edit', 'Glob'], onLog: log, signal });
+    await runClaude({ prompt: demoPrompt(d.spec, imagesOf(d), d.judgment, d.materialCrops, await ctxBlock(d.meta, d.spec)), cwd: d.dir, allowedTools: ['Read', 'Write', 'Edit', 'Glob'], onLog: log, signal });
     if (!existsSync(path.join(d.dir, 'demo', 'index.html'))) throw new Error('Claude 没有写出 demo/index.html');
     return lib.readMeta(id);
   });
@@ -270,7 +274,7 @@ async function stepFeedback(jobId: string, id: string, feedback: string, variant
     const stamp = new Date().toISOString().slice(0, 16).replace('T', ' ');
     log(variant ? 'Claude Code 正在按反馈修改这个方案…' : 'Claude Code 正在按反馈修改 demo…');
     const shot = crop ? d.demoScreenshots[1] ?? d.demoScreenshots[0] : undefined;
-    const out = await runClaude({ prompt: feedbackPrompt(feedback, t.history, d.spec, t.file, crop, shot, ctxBlock(d.meta, d.spec)), cwd: d.dir, allowedTools: ['Read', 'Write', 'Edit', 'Glob'], onLog: log, signal });
+    const out = await runClaude({ prompt: feedbackPrompt(feedback, t.history, d.spec, t.file, crop, shot, await ctxBlock(d.meta, d.spec)), cwd: d.dir, allowedTools: ['Read', 'Write', 'Edit', 'Glob'], onLog: log, signal });
     await lib.appendText(id, t.log, `## ${stamp}\n**反馈：** ${feedback}${crop ? `\n（附对照图 ${path.relative(d.dir, crop)}）` : ''}\n\n**修改：** ${out.trim()}\n\n`);
     // give it eyes: screenshot the result and let it compare against the reference itself
     const selfCheck = d.meta.self_check ?? (d.refs.length > 0 || d.frames.length === 0);
@@ -284,7 +288,7 @@ async function stepFeedback(jobId: string, id: string, feedback: string, variant
         await lib.updateMeta(id, { demo_screenshot_count: shots.length });
         const before = (await stat(t.abs)).mtimeMs;
         const final = round === MAX;
-        const note = await runClaude({ prompt: selfCheckPrompt(t.file, shots, imagesOf(d), feedback, crop, round, final, ctxBlock(d.meta, d.spec)), cwd: d.dir, allowedTools: final ? ['Read'] : ['Read', 'Edit'], onLog: log, signal });
+        const note = await runClaude({ prompt: selfCheckPrompt(t.file, shots, imagesOf(d), feedback, crop, round, final, await ctxBlock(d.meta, d.spec)), cwd: d.dir, allowedTools: final ? ['Read'] : ['Read', 'Edit'], onLog: log, signal });
         await lib.appendText(id, t.log, `**自查 ${round}：** ${note.trim()}\n\n`);
         if ((await stat(t.abs)).mtimeMs === before) break; // it looked and left the file alone: report matches the screen
       }
@@ -310,6 +314,7 @@ async function stepConsolidate(jobId: string, id: string): Promise<PatternMeta> 
     if (diff) await lib.writeText(id, 'consolidate-diff.md', diff + '\n');
     await lib.writeText(id, 'spec.md', md + '\n');
     await lib.setStatus(id, 'demo_done');
+    try { log('拆零件…'); await stepTraits(jobId + '-t', id); log('沉淀 skill 叶子…'); await stepDistill(jobId + '-d', id); } catch (e: any) { log('零件/叶子这步失败了，不影响 spec：' + (e?.message ?? e)); }
     if (existsSync(path.join(d.dir, 'skill', 'SKILL.md'))) {
       log('spec 变了，重新打包 skill…');
       await packSkillFiles(id, log, signal);
@@ -368,6 +373,39 @@ async function stepSkill(jobId: string, id: string): Promise<PatternMeta> {
   return runJob(jobId, id, 'skill', async (log, signal) => { await packSkillFiles(id, log, signal); return lib.readMeta(id); });
 }
 
+/** Take the confirmed pattern apart into traits.json. */
+async function stepTraits(jobId: string, id: string): Promise<PatternMeta> {
+  return runJob(jobId, id, 'traits', async (log, signal) => {
+    const d = await lib.getPattern(id);
+    if (!d.spec || !d.demoIndex) throw new Error('需要 spec 和 demo');
+    log('Claude 正在把 pattern 拆成零件…');
+    const tw = d.tweakList.map((t) => `${t.key} — ${t.label}（${t.type}${t.unit ? ' ' + t.unit : ''}）`).join('\n') || '（无）';
+    const out = await runClaude({ prompt: traitsPrompt(d.spec, d.handoff ?? '', tw), cwd: d.dir, allowedTools: ['Read'], onLog: log, signal });
+    const j = extractJson<any>(out.slice(out.lastIndexOf('```json')));
+    if (!j?.structure || !j?.material) throw new Error('零件 JSON 解析失败：\n' + out.slice(0, 300));
+    await lib.writeText(id, 'traits.json', JSON.stringify(j, null, 2) + '\n');
+    return lib.readMeta(id);
+  });
+}
+
+/** Grow skill leaves from the confirmed pattern; merges into existing leaves of the same slug. */
+async function stepDistill(jobId: string, id: string): Promise<PatternMeta> {
+  return runJob(jobId, id, 'distill', async (log, signal) => {
+    const d = await lib.getPattern(id);
+    if (!d.spec) throw new Error('需要 spec');
+    const leaves = await lib.listLeaves(SEED_LEAVES);
+    const related = lib.leavesFor(d.meta, leaves, 4).filter((l) => !l.builtin);
+    log(`Claude 正在沉淀 skill 叶子…${related.length ? `（会合并进已有的 ${related.map((l) => l.kind + '/' + l.slug).join('、')}）` : ''}`);
+    const out = await runClaude({ prompt: distillPrompt(d.meta, d.spec, d.traits ? JSON.stringify(d.traits, null, 1) : '（无）', related), cwd: d.dir, allowedTools: ['Read'], onLog: log, signal });
+    const re = /```leaf\s+(materials|geometry|motion)\/([a-z0-9-]+)\s*\n([\s\S]*?)```/g;
+    let m: RegExpExecArray | null; const written: string[] = [];
+    while ((m = re.exec(out))) written.push(await lib.writeLeaf(m[1] as lib.LeafKind, m[2], m[3]));
+    if (!written.length) throw new Error('没解析到叶子：\n' + out.slice(0, 300));
+    log(`写了 ${written.length} 片：${written.map((f) => path.relative(lib.LEAF_ROOT, f)).join('、')}`);
+    return lib.readMeta(id);
+  });
+}
+
 /** Shape first: rebuild silhouettes as single paths with point handles, flat-filled. */
 async function stepOutline(jobId: string, id: string, brief: string): Promise<PatternMeta> {
   return runJob(jobId, id, 'outline', async (log, signal) => {
@@ -375,7 +413,7 @@ async function stepOutline(jobId: string, id: string, brief: string): Promise<Pa
     await mkdir(path.join(d.dir, 'demo'), { recursive: true });
     if (d.demoIndex) { await mkdir(path.join(d.dir, 'variants'), { recursive: true }); await lib.saveVariant(id, '定形前', '先定形再上材质之前的自动备份'); log('当前 demo 已另存为方案「定形前」'); }
     log('Claude 正在把造型重画成一条轮廓线…');
-    await runClaude({ prompt: outlinePrompt(brief, imagesOf(d), !!d.demoIndex, ctxBlock(d.meta, d.spec)), cwd: d.dir, allowedTools: ['Read', 'Write', 'Edit', 'Glob'], onLog: log, signal });
+    await runClaude({ prompt: outlinePrompt(brief, imagesOf(d), !!d.demoIndex, await ctxBlock(d.meta, d.spec)), cwd: d.dir, allowedTools: ['Read', 'Write', 'Edit', 'Glob'], onLog: log, signal });
     if (!existsSync(path.join(d.dir, 'demo', 'index.html'))) throw new Error('Claude 没有写出 demo/index.html');
     return lib.updateMeta(id, { status: 'demo_wip', outline_ok: false, hidden_tweaks: [] });
   });
@@ -388,7 +426,7 @@ async function stepMaterialize(jobId: string, id: string): Promise<PatternMeta> 
     if (!d.demoIndex || !d.spec) throw new Error('需要 spec 和定好形的 demo');
     await lib.updateMeta(id, { outline_ok: true });
     log('Claude 正在把材质层挂到轮廓上…');
-    await runClaude({ prompt: materializePrompt(d.spec, imagesOf(d), d.judgment, ctxBlock(d.meta, d.spec)), cwd: d.dir, allowedTools: ['Read', 'Edit', 'Glob'], onLog: log, signal });
+    await runClaude({ prompt: materializePrompt(d.spec, imagesOf(d), d.judgment, await ctxBlock(d.meta, d.spec)), cwd: d.dir, allowedTools: ['Read', 'Edit', 'Glob'], onLog: log, signal });
     log('截图看一眼…');
     const shots = await screenshotDemo(d.demoIndex, path.join(d.dir, 'demo-screenshots'), log);
     await lib.updateMeta(id, { demo_screenshot_count: shots.length });
@@ -413,7 +451,7 @@ async function stepMaterial(jobId: string, id: string, picks: Pick[] = []): Prom
     if (picks.length) for (const [i, p] of picks.entries()) crops.push(...await makeMaterialCropsFrom(p.frame, p.rect, path.join(d.dir, 'material'), `crop-${i + 1}-${path.basename(p.frame, '.png')}`));
     else for (const [i, f] of autoPicks.entries()) crops.push(...await makeMaterialCrops(f, path.join(d.dir, 'material'), `crop-${i + 1}-${path.basename(f, '.png')}`));
     log('Claude 正在拆材质层栈、列待判定问题…');
-    const out = await runClaude({ prompt: materialPrompt(d.spec, crops, imgs, !d.frames.length, materialSkill(), modeBlock(d.meta), intentBlock(d.meta, d.spec)), cwd: d.dir, allowedTools: ['Read'], onLog: log, signal });
+    const out = await runClaude({ prompt: materialPrompt(d.spec, crops, imgs, !d.frames.length, materialSkill() + '\n' + await leafBlock(d.meta), modeBlock(d.meta), intentBlock(d.meta, d.spec)), cwd: d.dir, allowedTools: ['Read'], onLog: log, signal });
     const md = out.match(/```(?:markdown|md)\s*([\s\S]*?)```/i)?.[1]?.trim();
     const j = extractJson<{ items?: any[]; material?: string; realism?: string }>(out.slice(out.lastIndexOf('```json')));
     if (!md) throw new Error('没解析到材质层栈：\n' + out.slice(0, 300));
@@ -495,6 +533,9 @@ ipcMain.handle('variant:save', (_e, id: string, name: string, note?: string) => 
 ipcMain.handle('variant:restore', (_e, id: string, slug: string) => lib.restoreVariant(id, slug));
 ipcMain.handle('variant:delete', (_e, id: string, slug: string) => lib.deleteVariant(id, slug));
 ipcMain.handle('pattern:fork', (_e, id: string, name: string, fromVariant?: string, deviation?: string) => lib.forkPattern(id, name, fromVariant, deviation ?? ''));
+ipcMain.handle('pipeline:traits', (_e, jobId: string, id: string) => stepTraits(jobId, id));
+ipcMain.handle('pipeline:distill', (_e, jobId: string, id: string) => stepDistill(jobId, id));
+ipcMain.handle('leaves:list', async () => (await lib.listLeaves(SEED_LEAVES)).map((l) => ({ kind: l.kind, slug: l.slug, file: l.file, match: l.match, builtin: l.builtin })));
 ipcMain.handle('pipeline:outline', (_e, jobId: string, id: string, brief: string) => stepOutline(jobId, id, brief));
 ipcMain.handle('pipeline:materialize', (_e, jobId: string, id: string) => stepMaterialize(jobId, id));
 ipcMain.handle('pattern:refreshCover', async (_e, id: string) => {
