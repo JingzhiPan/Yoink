@@ -263,11 +263,19 @@ async function stepFeedback(jobId: string, id: string, feedback: string, variant
     // give it eyes: screenshot the result and let it compare against the reference itself
     const selfCheck = d.meta.self_check ?? (d.refs.length > 0 || d.frames.length === 0);
     if (selfCheck && !variant) {
-      log('截图，让 Claude 自己看一眼改得对不对…');
-      const shots = await screenshotDemo(t.abs, path.join(d.dir, 'demo-screenshots'), log);
-      await lib.updateMeta(id, { demo_screenshot_count: shots.length });
-      const note = await runClaude({ prompt: selfCheckPrompt(t.file, shots, imagesOf(d), feedback, crop), cwd: d.dir, allowedTools: ['Read', 'Edit'], onLog: log, signal });
-      await lib.appendText(id, t.log, `**自查：** ${note.trim()}\n\n`);
+      // look → fix → look again, until it stops editing; the last round is read-only so the report describes what is actually on screen
+      const { stat } = await import('node:fs/promises');
+      const MAX = 3;
+      for (let round = 1; round <= MAX; round++) {
+        log(round === 1 ? '截图，让 Claude 自己看一眼改得对不对…' : `第 ${round} 轮自查：重新截图看上一轮修得对不对…`);
+        const shots = await screenshotDemo(t.abs, path.join(d.dir, 'demo-screenshots'), log);
+        await lib.updateMeta(id, { demo_screenshot_count: shots.length });
+        const before = (await stat(t.abs)).mtimeMs;
+        const final = round === MAX;
+        const note = await runClaude({ prompt: selfCheckPrompt(t.file, shots, imagesOf(d), feedback, crop, round, final), cwd: d.dir, allowedTools: final ? ['Read'] : ['Read', 'Edit'], onLog: log, signal });
+        await lib.appendText(id, t.log, `**自查 ${round}：** ${note.trim()}\n\n`);
+        if ((await stat(t.abs)).mtimeMs === before) break; // it looked and left the file alone: report matches the screen
+      }
       await refreshCover(id);
     }
     return variant ? lib.readMeta(id) : lib.updateMeta(id, { status: 'demo_wip' });

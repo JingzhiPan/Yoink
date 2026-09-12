@@ -314,8 +314,8 @@ ${spec.slice(0, 4000)}`;
 }
 
 /** After a feedback edit with no video to compare against: Claude looks at its own screenshots next to the reference and fixes what it can see. */
-export function selfCheckPrompt(file: string, shots: string[], refs: string[], feedback: string, crop?: string): string {
-  return `你刚按用户反馈改了 ${file}。下面是改完后每个状态的截图，以及用户的参考图${crop ? '和他框出来的对照放大图' : ''}。请先 Read 全部图片，用眼睛检查你刚才的修改是否真的到位，再决定要不要再改。
+export function selfCheckPrompt(file: string, shots: string[], refs: string[], feedback: string, crop?: string, round = 1, final = false): string {
+  return `你刚按用户反馈改了 ${file}。下面是**改完后**真实渲染出来的每个状态截图（这是无头浏览器刚刚跑出来的，不是猜的，不要说"没有浏览器环境"），以及用户的参考图${crop ? '和他框出来的对照放大图' : ''}。请先 Read 全部图片，用眼睛检查你刚才的修改是否真的到位。${round > 1 ? `这是第 ${round} 轮：上一轮你看完又改了一次，这些截图是改完之后重新渲染的。` : ''}${final ? '这是最后一轮，只看不改：没有 Edit 工具，只输出报告。' : '看得见的问题直接用 Edit 修掉，修完会再截图给你看一遍；如果都到位了就什么都别改，直接报告。'}
 
 用户这次的反馈：
 ${feedback}
@@ -326,5 +326,5 @@ ${shots.map((f) => `- ${f}`).join('\n')}
 ${refs.map((f) => `- ${f}`).join('\n')}
 ${crop ? `对照放大图：${crop}\n` : ''}
 检查三件事：① 反馈要求的改动在截图里看得见吗；② 有没有改出穿帮（形状不闭合、层错位、旧形状残留、颜色发灰过曝）；③ 和参考图比，材质读法对不对（高光锐度、边缘压暗、透光感）。
-看得见的问题直接用 Edit 修掉（只改 ${file}，保持 window.__yoink.states 和已有 tweaks 不变）。最后只输出一段话：你在截图里看到了什么、修了什么、还有什么需要用户自己定。不要客套。`;
+${final ? '' : `修的话只改 ${file}，保持 window.__yoink.states 和已有 tweaks 不变。`}最后只输出一段话：你在截图里看到了什么、${final ? '' : '修了什么、'}还有什么需要用户自己定。不要客套。`;
 }
