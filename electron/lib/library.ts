@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { LIBRARY_ROOT } from './paths.js';
 import type { PatternMeta, PatternDetail, PatternStatus, DemoVariant, JudgmentItem, TweakInfo } from '../../shared/types.js';
-import { JUDGMENT_KIND_LABEL } from '../../shared/types.js';
+import { JUDGMENT_KIND_LABEL, MODE_LABEL, modeOf } from '../../shared/types.js';
 
 export function patternDir(id: string) { return path.join(LIBRARY_ROOT, id); }
 
@@ -218,7 +218,7 @@ export async function deleteVariant(id: string, slug: string): Promise<void> {
   await rm(path.join(patternDir(id), 'variants', slug), { recursive: true, force: true });
 }
 /** Branch the whole pattern into a new folder; optionally start it from a saved variant. */
-export async function forkPattern(id: string, newName: string, fromVariant?: string): Promise<PatternMeta> {
+export async function forkPattern(id: string, newName: string, fromVariant?: string, deviation = ''): Promise<PatternMeta> {
   const { cp } = await import('node:fs/promises');
   const src = patternDir(id);
   let newId = newName.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48);
@@ -234,7 +234,8 @@ export async function forkPattern(id: string, newName: string, fromVariant?: str
     if (existsSync(path.join(dst, 'demo', 'feedback.md'))) { await cp(path.join(dst, 'demo', 'feedback.md'), path.join(dst, 'demo-feedback.md')); await rm(path.join(dst, 'demo', 'feedback.md'), { force: true }); }
   }
   const meta = await readMeta(finalId);
-  return updateMeta(finalId, { id: finalId, name: newName, status: 'demo_wip', favorite: false, demo_screenshot_count: 0, notes: `分支自 ${id}${fromVariant ? ' / ' + fromVariant : ''}`, created: new Date().toISOString().slice(0, 10) });
+  const origin = await readMeta(id);
+  return updateMeta(finalId, { id: finalId, name: newName, status: 'demo_wip', favorite: false, demo_screenshot_count: 0, notes: meta.notes, created: new Date().toISOString().slice(0, 10), mode: 'remix', origin: { id, name: origin.name, variant: fromVariant }, deviation, self_check: true, outline_ok: false });
 }
 
 // ─── handoff ────────────────────────────────────────────────────
@@ -260,6 +261,11 @@ export function buildHandoff(d: PatternDetail): string | null {
   if (!d.spec) return null;
   const s = d.spec;
   const L: string[] = [`# ${d.meta.name} · 交接`, '', `> pattern \`${d.meta.id}\` · ${d.meta.status} · ${d.meta.tags.join(', ')}`, ''];
+  const mode = modeOf(d.meta);
+  if (mode !== 'replicate') {
+    L.push(`## ${MODE_LABEL[mode]}${d.meta.origin ? `，分支自「${d.meta.origin.name}」（${d.meta.origin.id}${d.meta.origin.variant ? ' / ' + d.meta.origin.variant : ''}）` : ''}`, '');
+    L.push(d.meta.deviation?.trim() ? d.meta.deviation.trim() : '（还没写偏离声明：保留原作什么、改掉什么）', '');
+  }
   const core = section(s, 'Core Principle'); if (core) L.push('## 视频里能证明的：核心规则', '', core, '');
   const mat = section(s, 'Material Layers'); if (mat) L.push('## 视频里能证明的：材质层栈', '', mat, '');
   const dec = section(s, 'Design Decisions');
@@ -277,6 +283,7 @@ export function buildHandoff(d: PatternDetail): string | null {
     L.push('');
   }
   const craft = section(s, 'Craft Details'); if (craft) L.push('## 手感细节（不这么做就露馅）', '', craft, '');
+  const inf = section(s, 'Inferred'); if (inf) L.push('## 模型推断的（没有证据、也不是你定的，可以推翻）', '', inf, '');
   if (d.tweakList.length) {
     L.push('## 可调参数（demo 里 <style id="yoink-tweaks">）', '');
     for (const t of d.tweakList) L.push(`- \`${t.key}\` — ${t.label}${t.type !== 'range' ? `（${t.type}）` : t.unit ? `（${t.unit}）` : ''}`);

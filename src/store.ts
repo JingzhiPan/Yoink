@@ -50,7 +50,9 @@ interface State {
   saveVariant(id: string, name: string): Promise<void>;
   restoreVariant(id: string, slug: string): Promise<void>;
   deleteVariant(id: string, slug: string): Promise<void>;
-  forkPattern(id: string, name: string, fromVariant?: string): Promise<void>;
+  forkPattern(id: string, name: string, fromVariant?: string, deviation?: string): Promise<void>;
+  outline(id: string, brief: string): Promise<void>;
+  materialize(id: string): Promise<void>;
 }
 
 export const useStore = create<State>((set, get) => {
@@ -154,7 +156,9 @@ export const useStore = create<State>((set, get) => {
     async saveVariant(id, name) { await api.saveVariant(id, name); await afterStep(id); },
     async restoreVariant(id, slug) { await api.restoreVariant(id, slug); set({ previewVariant: null }); await afterStep(id); },
     async deleteVariant(id, slug) { await api.deleteVariant(id, slug); set({ previewVariant: null }); await afterStep(id); },
-    async forkPattern(id, name, fromVariant) { const m = await api.forkPattern(id, name, fromVariant); await get().refreshList(); await get().open(m.id); },
+    async forkPattern(id, name, fromVariant, deviation) { const m = await api.forkPattern(id, name, fromVariant, deviation); await get().refreshList(); await get().open(m.id); },
+    outline: (id, brief) => wrap(id, 'outline', (j) => api.outline(j, id, brief)),
+    materialize: (id) => wrap(id, 'materialize', (j) => api.materialize(j, id)),
     async refreshCover(id) { await api.refreshCover(id); await afterStep(id); },
     async deletePattern(id) { await api.deletePattern(id); if (get().current?.meta.id === id) get().goHome(); if (get().selected?.meta.id === id) set({ selected: null }); await get().refreshList(); },
   };

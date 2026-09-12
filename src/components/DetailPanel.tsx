@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useStore, runningJobsFor } from '../store';
-import { TAG_FACET_LABEL } from '../../shared/types';
+import { TAG_FACET_LABEL, MODE_LABEL, modeOf } from '../../shared/types';
 import { StatusBadge } from './common';
 import { SpecTab } from './SpecTab';
 import { DemoTab } from './DemoTab';
@@ -30,8 +30,15 @@ export function DetailPanel() {
     <main className="panel workspace" key={d.meta.id} ref={ref}>
       <div className="title-row drag">
         <h1><input key={d.meta.name} defaultValue={d.meta.name} onBlur={(e) => e.target.value !== d.meta.name && updateMeta(d.meta.id, { name: e.target.value })} /></h1>
+        <span className={`mode-chip ${modeOf(d.meta)}`} title="复刻：对原视频负责 · 二创：对偏离声明负责 · 原创：对你的意图和参考图负责">{MODE_LABEL[modeOf(d.meta)]}</span>
         <StatusBadge status={d.meta.status} />
       </div>
+      {modeOf(d.meta) !== 'replicate' && (
+        <div className="deviation">
+          <div className="hint">{d.meta.origin ? <>分支自「{d.meta.origin.name}」{d.meta.origin.variant ? ` / ${d.meta.origin.variant}` : ''} · </> : null}偏离声明（每次修改的边界；保留的部分对原作负责，改掉的部分对参考图和你负责）</div>
+          <textarea key={d.meta.id} defaultValue={d.meta.deviation ?? ''} placeholder="保留什么、改掉什么。例：保留扇形展开和收拢；材质改乳胶；删翻转；造型改套子" onBlur={(e) => e.target.value !== (d.meta.deviation ?? '') && updateMeta(d.meta.id, { deviation: e.target.value })} />
+        </div>
+      )}
       <div className="row head-row">
         <span className="meta-line">{d.meta.id} · {d.meta.video_duration_sec}s · {d.meta.frame_count} frames · {d.meta.input_method || '—'}</span>
         <span className="spacer" />

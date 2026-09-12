@@ -7,7 +7,7 @@ import { LIBRARY_ROOT, binary } from './lib/paths.js';
 import { extractFrames, makeUploadCopy } from './lib/ffmpeg.js';
 import { runClaude, extractJson } from './lib/claude.js';
 import { parseSpec, slugify } from './lib/parser.js';
-import { verifyPrompt, demoPrompt, feedbackPrompt, comparePrompt, skillPrompt, computerUsePrompt, consolidatePrompt, tweaksPrompt, retagPrompt, materialPrompt, selfCheckPrompt } from './lib/prompts.js';
+import { verifyPrompt, demoPrompt, feedbackPrompt, comparePrompt, skillPrompt, computerUsePrompt, consolidatePrompt, tweaksPrompt, retagPrompt, materialPrompt, selfCheckPrompt, modeBlock, outlinePrompt, materializePrompt } from './lib/prompts.js';
 import { screenshotDemo } from './lib/screenshot.js';
 import { parseWithOpenAI } from './lib/openai.js';
 import { makeCover, coverPath, makeMaterialCrops, makeMaterialCropsFrom, cropRegion } from './lib/cover.js';
@@ -174,7 +174,7 @@ async function stepDemo(jobId: string, id: string): Promise<PatternMeta> {
     await lib.updateMeta(id, { status: 'demo_wip' });
     await mkdir(path.join(d.dir, 'demo'), { recursive: true });
     log('Claude Code 正在生成 demo…');
-    await runClaude({ prompt: demoPrompt(d.spec, imagesOf(d), d.judgment, d.materialCrops), cwd: d.dir, allowedTools: ['Read', 'Write', 'Edit', 'Glob'], onLog: log, signal });
+    await runClaude({ prompt: demoPrompt(d.spec, imagesOf(d), d.judgment, d.materialCrops, modeBlock(d.meta)), cwd: d.dir, allowedTools: ['Read', 'Write', 'Edit', 'Glob'], onLog: log, signal });
     if (!existsSync(path.join(d.dir, 'demo', 'index.html'))) throw new Error('Claude 没有写出 demo/index.html');
     return lib.readMeta(id);
   });
@@ -258,7 +258,7 @@ async function stepFeedback(jobId: string, id: string, feedback: string, variant
     const stamp = new Date().toISOString().slice(0, 16).replace('T', ' ');
     log(variant ? 'Claude Code 正在按反馈修改这个方案…' : 'Claude Code 正在按反馈修改 demo…');
     const shot = crop ? d.demoScreenshots[1] ?? d.demoScreenshots[0] : undefined;
-    const out = await runClaude({ prompt: feedbackPrompt(feedback, t.history, d.spec, t.file, crop, shot), cwd: d.dir, allowedTools: ['Read', 'Write', 'Edit', 'Glob'], onLog: log, signal });
+    const out = await runClaude({ prompt: feedbackPrompt(feedback, t.history, d.spec, t.file, crop, shot, modeBlock(d.meta)), cwd: d.dir, allowedTools: ['Read', 'Write', 'Edit', 'Glob'], onLog: log, signal });
     await lib.appendText(id, t.log, `## ${stamp}\n**反馈：** ${feedback}${crop ? `\n（附对照图 ${path.relative(d.dir, crop)}）` : ''}\n\n**修改：** ${out.trim()}\n\n`);
     // give it eyes: screenshot the result and let it compare against the reference itself
     const selfCheck = d.meta.self_check ?? (d.refs.length > 0 || d.frames.length === 0);
@@ -272,7 +272,7 @@ async function stepFeedback(jobId: string, id: string, feedback: string, variant
         await lib.updateMeta(id, { demo_screenshot_count: shots.length });
         const before = (await stat(t.abs)).mtimeMs;
         const final = round === MAX;
-        const note = await runClaude({ prompt: selfCheckPrompt(t.file, shots, imagesOf(d), feedback, crop, round, final), cwd: d.dir, allowedTools: final ? ['Read'] : ['Read', 'Edit'], onLog: log, signal });
+        const note = await runClaude({ prompt: selfCheckPrompt(t.file, shots, imagesOf(d), feedback, crop, round, final, modeBlock(d.meta)), cwd: d.dir, allowedTools: final ? ['Read'] : ['Read', 'Edit'], onLog: log, signal });
         await lib.appendText(id, t.log, `**自查 ${round}：** ${note.trim()}\n\n`);
         if ((await stat(t.abs)).mtimeMs === before) break; // it looked and left the file alone: report matches the screen
       }
@@ -290,7 +290,7 @@ async function stepConsolidate(jobId: string, id: string): Promise<PatternMeta> 
     log('先给最终 demo 截一轮图并和原始帧比对…');
     await shootAndCompare(d, log, signal);
     log('Claude 正在把校正合并回 spec 并精简…');
-    const out = await runClaude({ prompt: consolidatePrompt(d.spec, d.feedbackLog ?? '', d.judgment), cwd: d.dir, allowedTools: ['Read'], onLog: log, signal });
+    const out = await runClaude({ prompt: consolidatePrompt(d.spec, d.feedbackLog ?? '', d.judgment, modeBlock(d.meta)), cwd: d.dir, allowedTools: ['Read'], onLog: log, signal });
     const diff = out.match(/```diff-md\s*([\s\S]*?)```/i)?.[1]?.trim();
     const md = out.match(/```(?:markdown|md)\s*([\s\S]*?)```/i)?.[1]?.trim();
     if (!md || md.length < 200) throw new Error('精简 spec 输出异常：\n' + out.slice(0, 300));
@@ -354,6 +354,35 @@ async function packSkillFiles(id: string, log: (m: string) => void, signal: Abor
 }
 async function stepSkill(jobId: string, id: string): Promise<PatternMeta> {
   return runJob(jobId, id, 'skill', async (log, signal) => { await packSkillFiles(id, log, signal); return lib.readMeta(id); });
+}
+
+/** Shape first: rebuild silhouettes as single paths with point handles, flat-filled. */
+async function stepOutline(jobId: string, id: string, brief: string): Promise<PatternMeta> {
+  return runJob(jobId, id, 'outline', async (log, signal) => {
+    const d = await lib.getPattern(id);
+    await mkdir(path.join(d.dir, 'demo'), { recursive: true });
+    if (d.demoIndex) { await mkdir(path.join(d.dir, 'variants'), { recursive: true }); await lib.saveVariant(id, '定形前', '先定形再上材质之前的自动备份'); log('当前 demo 已另存为方案「定形前」'); }
+    log('Claude 正在把造型重画成一条轮廓线…');
+    await runClaude({ prompt: outlinePrompt(brief, imagesOf(d), !!d.demoIndex, modeBlock(d.meta)), cwd: d.dir, allowedTools: ['Read', 'Write', 'Edit', 'Glob'], onLog: log, signal });
+    if (!existsSync(path.join(d.dir, 'demo', 'index.html'))) throw new Error('Claude 没有写出 demo/index.html');
+    return lib.updateMeta(id, { status: 'demo_wip', outline_ok: false, hidden_tweaks: [] });
+  });
+}
+
+/** Outline confirmed → paint the material stack onto it. */
+async function stepMaterialize(jobId: string, id: string): Promise<PatternMeta> {
+  return runJob(jobId, id, 'materialize', async (log, signal) => {
+    const d = await lib.getPattern(id);
+    if (!d.demoIndex || !d.spec) throw new Error('需要 spec 和定好形的 demo');
+    await lib.updateMeta(id, { outline_ok: true });
+    log('Claude 正在把材质层挂到轮廓上…');
+    await runClaude({ prompt: materializePrompt(d.spec, imagesOf(d), d.judgment, modeBlock(d.meta)), cwd: d.dir, allowedTools: ['Read', 'Edit', 'Glob'], onLog: log, signal });
+    log('截图看一眼…');
+    const shots = await screenshotDemo(d.demoIndex, path.join(d.dir, 'demo-screenshots'), log);
+    await lib.updateMeta(id, { demo_screenshot_count: shots.length });
+    await refreshCover(id);
+    return lib.readMeta(id);
+  });
 }
 
 /** Material pass: zoomed crops of two frames → layer stack into spec.md + the human-judgment list. */
@@ -439,7 +468,9 @@ ipcMain.handle('pattern:delete', (_e, id: string) => lib.deletePattern(id));
 ipcMain.handle('variant:save', (_e, id: string, name: string, note?: string) => lib.saveVariant(id, name, note));
 ipcMain.handle('variant:restore', (_e, id: string, slug: string) => lib.restoreVariant(id, slug));
 ipcMain.handle('variant:delete', (_e, id: string, slug: string) => lib.deleteVariant(id, slug));
-ipcMain.handle('pattern:fork', (_e, id: string, name: string, fromVariant?: string) => lib.forkPattern(id, name, fromVariant));
+ipcMain.handle('pattern:fork', (_e, id: string, name: string, fromVariant?: string, deviation?: string) => lib.forkPattern(id, name, fromVariant, deviation ?? ''));
+ipcMain.handle('pipeline:outline', (_e, jobId: string, id: string, brief: string) => stepOutline(jobId, id, brief));
+ipcMain.handle('pipeline:materialize', (_e, jobId: string, id: string) => stepMaterialize(jobId, id));
 ipcMain.handle('pattern:refreshCover', async (_e, id: string) => {
   const d = await lib.getPattern(id);
   if (d.demoIndex && d.demoScreenshots.length === 0) {

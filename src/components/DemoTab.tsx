@@ -14,7 +14,11 @@ const REFRESH_KINDS = new Set(['feedback', 'tweaks', 'demo', 'consolidate', 'scr
 export function DemoTab({ d }: { d: PatternDetail }) {
   const { generateDemo, feedback, confirmDemo, saveVariant, restoreVariant, deleteVariant, forkPattern, updateMeta, previewVariant: preview, setPreviewVariant: setPreview } = useStore();
   const [frameEl, setFrameEl] = useState<HTMLIFrameElement | null>(null);
-  const [dialog, setDialog] = useState<{ title: string; initial: string; label: string; run: (v: string) => Promise<void> } | null>(null);
+  const [dialog, setDialog] = useState<{ title: string; initial: string; label: string; run: (v: string, extra?: string) => Promise<void>; extra?: { label: string; placeholder: string } } | null>(null);
+  const DEV = { label: '偏离声明：保留原作什么、改掉什么。之后每次修改都以它为边界。', placeholder: '例：保留扇形展开和收拢交互；材质从磨砂玻璃改成乳胶；删掉翻转；造型改成套子，储精囊和卷边是同一条轮廓' };
+  const { outline, materialize } = useStore();
+  const [shapeBrief, setShapeBrief] = useState('');
+  const [showShape, setShowShape] = useState(false);
   const jobs = useStore((s) => s.jobs);
   const previewNow = useStore((s) => s.previewVariant);
   const targetSlug = previewNow ? d.variants.find((x) => x.index === previewNow)?.slug ?? null : null;
@@ -82,15 +86,28 @@ export function DemoTab({ d }: { d: PatternDetail }) {
                 方案「{v.name}」是从当前 demo 分出去的独立工作区：下面的反馈和 tweaks 只改这个方案，不动主 demo。<span className="spacer" />
                 <button className="ghost sm" onClick={() => setPreview(null)}>回到当前 demo</button>
                 <button className="ghost sm" disabled={running} onClick={async () => { if (confirm(`用「${v.name}」覆盖当前 demo？建议先把当前 demo 另存。`)) { await restoreVariant(id, v.slug); refresh('已恢复为当前 demo'); } }}>恢复为当前</button>
-                <button className="ghost sm" disabled={running} onClick={() => setDialog({ title: `从「${v.name}」分支成新 pattern`, initial: `${d.meta.name} · ${v.name}`, label: '分支', run: (n) => forkPattern(id, n, v.slug) })}>分支</button>
+                <button className="ghost sm" disabled={running} onClick={() => setDialog({ title: `从「${v.name}」分支成新 pattern`, initial: `${d.meta.name} · ${v.name}`, label: '分支', extra: DEV, run: (n, x) => forkPattern(id, n, v.slug, x) })}>分支</button>
                 <button className="ghost sm danger" onClick={async () => { if (confirm(`删除方案「${v.name}」？`)) await deleteVariant(id, v.slug); }}>删</button>
               </div>) : null; })()}
+            {!variant && (
+              <div className={`shape-row ${d.meta.outline_ok === false ? 'pending' : ''}`}>
+                <div className="row">
+                  <h3>先定形，再上材质</h3>
+                  <span className="hint">{d.meta.outline_ok === false ? '现在是剪纸版：拖 tweaks 里的角点把轮廓改到满意，再点"形状 OK，上材质"。' : '造型类改动别一层层打补丁：让它把每个主体重画成一条轮廓线，你拖点定形，材质再整体挂上去。'}</span>
+                  <span className="spacer" />
+                  {d.meta.outline_ok === false
+                    ? <><button className="ghost sm" disabled={running} onClick={() => setShowShape(!showShape)}>再改形</button><button className="primary sm" disabled={running} onClick={() => materialize(id)}>形状 OK，上材质</button></>
+                    : <button className="sm" disabled={running} onClick={() => setShowShape(!showShape)}>重画轮廓</button>}
+                </div>
+                {showShape && <div className="focus-box"><input autoFocus value={shapeBrief} onChange={(e) => setShapeBrief(e.target.value)} placeholder='要什么形：如"一个套子：长筒身、顶端小囊、底部卷边圆环，储精囊和筒身是同一条线"' onKeyDown={(e) => { if (e.key === 'Enter') { setShowShape(false); outline(id, shapeBrief); } }} /><div className="row"><button className="primary sm" disabled={running} onClick={() => { setShowShape(false); outline(id, shapeBrief); }}>重画（当前 demo 会自动另存）</button><button className="ghost sm" onClick={() => setShowShape(false)}>取消</button></div></div>}
+              </div>
+            )}
             <div className="row">
               <h3>{variant ? `调方案「${variant.name}」` : '调 demo'}</h3>
               {!variant && <label className="check" title="每次改完自动截图，让 Claude 对着参考图/关键帧自己检查一遍再交给你。没有视频的二创默认开"><input type="checkbox" checked={d.meta.self_check ?? (d.refs.length > 0 || d.frames.length === 0)} onChange={(e) => updateMeta(id, { self_check: e.target.checked })} /> 改完自己看一眼</label>}
               <span className="spacer" />
               {!variant && <button className="sm" disabled={running} onClick={() => setDialog({ title: '另存当前 demo 为方案', initial: `方案 ${d.variants.length + 1}`, label: '另存', run: (n) => saveVariant(id, n) })} title="复制一份当前 demo 作为独立方案，各改各的">另存当前 demo 为方案</button>}
-              {!variant && <button className="sm" disabled={running} onClick={() => setDialog({ title: '分支成新 pattern', initial: d.meta.name + ' (variant)', label: '分支', run: (n) => forkPattern(id, n) })}>分支成新 pattern</button>}
+              {!variant && <button className="sm" disabled={running} onClick={() => setDialog({ title: '分支成新 pattern', initial: d.meta.name + ' (variant)', label: '分支', extra: DEV, run: (n, x) => forkPattern(id, n, undefined, x) })}>分支成新 pattern</button>}
             </div>
             {!variant && openJudg.length > 0 && <div className="callout">还有 {openJudg.length} 个待判定问题没答（Spec 页）。答了再改 demo，通常比来回反馈省事。</div>}
             <div className="chat">
@@ -129,7 +146,7 @@ export function DemoTab({ d }: { d: PatternDetail }) {
           {d.demoCompare && (<><h3>比对报告</h3><Markdown text={d.demoCompare} /></>)}
         </>)}
         {picker && <RegionPicker frames={[...d.frames, ...d.refs]} onClose={() => setPicker(false)} onPick={async (f, r) => { setPicker(false); setCrop(await api.cropFrame(id, f, r)); }} />}
-        {dialog && <NameDialog title={dialog.title} initial={dialog.initial} confirmLabel={dialog.label} onClose={() => setDialog(null)} onSubmit={async (n) => { setDialog(null); await dialog.run(n); }} />}
+        {dialog && <NameDialog title={dialog.title} initial={dialog.initial} confirmLabel={dialog.label} extra={dialog.extra} onClose={() => setDialog(null)} onSubmit={async (n, x) => { setDialog(null); await dialog.run(n, x); }} />}
     </>
   );
 }

@@ -36,7 +36,16 @@ export interface PatternMeta {
   hidden_tweaks?: string[];   // tweak keys the user hid from the panel
   tag_facets?: TagFacets;     // the same tags, keyed by facet
   self_check?: boolean;       // after each feedback edit, screenshot and let Claude compare against refs/frames itself
+  mode?: PatternMode;         // replicate (from a video) / remix (forked, with a deviation statement) / original (from refs + intent)
+  origin?: { id: string; name: string; variant?: string }; // what a remix was forked from
+  deviation?: string;         // remix/original: what is kept from the origin and what is changed; the boundary every edit respects
+  outline_ok?: boolean;       // shape-first flow: the silhouette has been confirmed, material may be applied
 }
+export type PatternMode = 'replicate' | 'remix' | 'original';
+export const MODE_LABEL: Record<PatternMode, string> = { replicate: '复刻', remix: '二创', original: '原创' };
+/** Mode is derived when not stored: forked → remix, no video → original, else replicate. */
+export const modeOf = (m: { mode?: PatternMode; origin?: unknown; video_duration_sec: number; frame_count: number }): PatternMode =>
+  m.mode ?? (m.origin ? 'remix' : m.frame_count === 0 ? 'original' : 'replicate');
 
 /** One tag per facet (feels_like optional). Tech goes to tech_hints, not tags. */
 export interface TagFacets { what?: string; look?: string; ux?: string; feels_like?: string; for?: string }
@@ -86,7 +95,7 @@ export interface Settings {
   ffmpegPath: string | null;
 }
 
-export type JobKind = 'extract' | 'parse' | 'verify' | 'demo' | 'screenshot' | 'feedback' | 'consolidate' | 'tweaks' | 'skill' | 'retag' | 'material';
+export type JobKind = 'extract' | 'parse' | 'verify' | 'demo' | 'screenshot' | 'feedback' | 'consolidate' | 'tweaks' | 'skill' | 'retag' | 'material' | 'outline' | 'materialize';
 
 export interface JobEvent {
   jobId: string;
