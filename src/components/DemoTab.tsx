@@ -141,9 +141,14 @@ function ScaledFrame({ src, onFrame, onScale }: { src: string; onFrame?: (el: HT
     const ro = new ResizeObserver(() => { const s = Math.min(1, el.clientWidth / 960); setScale(s); onScale?.(s); });
     ro.observe(el); return () => ro.disconnect();
   }, []);
+  // Scale by telling the page to zoom (via the bridge) instead of CSS-transforming the iframe:
+  // a transformed iframe rasterises blur/backdrop filters and blend modes at the scaled size and looks soft and washed out.
+  const frameRef = useRef<HTMLIFrameElement | null>(null);
+  const sendZoom = () => { try { frameRef.current?.contentWindow?.postMessage({ type: 'yoink:zoom', zoom: scale }, '*'); } catch { /* */ } };
+  useEffect(sendZoom, [scale]);
   return (
-    <div className="iframewrap" ref={ref} style={{ height: 600 * scale, aspectRatio: 'auto' }}>
-      <iframe key={src} ref={onFrame} src={src} sandbox="allow-scripts allow-same-origin" title="demo" style={{ width: 960, height: 600, transform: `scale(${scale})`, transformOrigin: 'top left' }} />
+    <div className="iframewrap" ref={ref} style={{ height: Math.round(600 * scale), aspectRatio: 'auto' }}>
+      <iframe key={src} ref={(el) => { frameRef.current = el; onFrame?.(el); }} src={src} sandbox="allow-scripts allow-same-origin" title="demo" onLoad={sendZoom} style={{ width: Math.round(960 * scale), height: Math.round(600 * scale) }} />
     </div>
   );
 }

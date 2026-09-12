@@ -39,7 +39,8 @@ const TWEAK_BRIDGE = `<script>(function(){
   window.addEventListener('message',function(e){ var m=e.data||{};
     if(m.type==='yoink:get-tweaks'){ reply(e.source); }
     else if(m.type==='yoink:set-tweak'){ document.documentElement.style.setProperty(m.key,m.value); }
-    else if(m.type==='yoink:get-rect'){ var el=null; try{ el=document.querySelector(m.selector); }catch(x){} if(el){ var r=el.getBoundingClientRect(); try{ e.source.postMessage({type:'yoink:rect',selector:m.selector,rect:{x:r.left,y:r.top,w:r.width,h:r.height}},'*'); }catch(x){} } }
+    else if(m.type==='yoink:zoom'){ document.documentElement.style.zoom=String(m.zoom||1); }
+    else if(m.type==='yoink:get-rect'){ var el=null; try{ el=document.querySelector(m.selector); }catch(x){} if(el){ var r=el.getBoundingClientRect(); var z=parseFloat(document.documentElement.style.zoom)||1; try{ e.source.postMessage({type:'yoink:rect',selector:m.selector,rect:{x:r.left/z,y:r.top/z,w:r.width/z,h:r.height/z}},'*'); }catch(x){} } }
     else if(m.type==='yoink:reset-tweaks'){ (m.keys||[]).forEach(function(k){ document.documentElement.style.removeProperty(k); }); reply(e.source); } });
   window.addEventListener('load',function(){ if(window.parent!==window) reply(window.parent); });
 })();</script>`;
