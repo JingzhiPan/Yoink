@@ -38,7 +38,7 @@ export function MetaEditor({ meta, onChange }: { meta: PatternMeta; onChange: (p
   return (
     <div className="metaform">
       <label>标签</label>
-      <input value={tags} onChange={(e) => setTags(e.target.value)} onBlur={() => onChange({ tags: split(tags) })} placeholder="animation, gooey, spring" />
+      <input value={tags} onChange={(e) => setTags(e.target.value)} onBlur={() => onChange({ tags: split(tags) })} placeholder="what, look, ux, feels-like, for（4–6 个）" />
       <label>分类</label>
       <select value={meta.category} onChange={(e) => onChange({ category: e.target.value as PatternMeta['category'] })}>
         {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}

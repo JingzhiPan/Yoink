@@ -1,5 +1,13 @@
 import type { PatternMeta } from '../../shared/types.js';
 
+export const TAG_RULES = `标签规则（严格）：一共 4–6 个英文 kebab-case 标签，按下面五个维度各选最多一个，宁缺毋滥：
+- what：这是个什么东西（slider / card-deck / radial-menu / folder / toggle / modal …）
+- look：属于哪种 UI 审美大类（glassmorphism / gooey / neumorphism / flat / skeuomorphic / ios-native / brutalist …）
+- ux：哪个方向的 UX（direct-manipulation / hover-reveal / drag-to-adjust / expand-collapse / focus-spotlight / progressive-disclosure …）
+- feels_like：像什么实物，可选（liquid / candy / playing-cards / paper / jelly / glass …）
+- for：干嘛用的（adjust-value / share / pick-option / showcase / navigate / confirm …）
+技术实现（svg-filter、backdrop-filter、spring…）不算标签，放 tech_hints。不要写 micro-interaction、css、react 这类没有区分度的词。`;
+
 export const SPEC_FORMAT_HINT = `统一 spec 格式（Markdown）：
 # <Pattern name in English>
 ## Overview — 一段话讲这个效果是什么、给人什么感觉
@@ -35,7 +43,8 @@ ${SPEC_FORMAT_HINT}
 ## Verification Notes — 你删了什么、补了什么、修正了什么（简短列表）
 
 输出要求：先输出完整的 verified spec Markdown（用 \`\`\`markdown 围栏包裹），然后输出一个 \`\`\`json 围栏的元数据块：
-{"name": "英文名", "tags": ["..."], "category": "micro-interaction|transition|layout|data-viz|navigation|form|feedback|creative", "complexity": "low|medium|high", "tech_hints": ["..."]}
+{"name": "英文名", "tag_facets": {"what": "...", "look": "...", "ux": "...", "feels_like": "...", "for": "..."}, "category": "micro-interaction|transition|layout|data-viz|navigation|form|feedback|creative", "complexity": "low|medium|high", "tech_hints": ["..."]}
+${TAG_RULES}
 complexity：low=纯 CSS，medium=需要 JS/动画库，high=需要 canvas/SVG/WebGL/自定义渲染。
 当前 meta 供参考：${JSON.stringify({ name: meta.name, tags: meta.tags, category: meta.category })}`;
 }
@@ -69,8 +78,8 @@ ${spec}
 SPEC`;
 }
 
-export function feedbackPrompt(feedback: string, history: string, spec: string): string {
-  return `当前目录下 demo/index.html 是根据 spec 生成的 UI 交互 demo。用户看过效果后给出反馈，请用 Read 读取 demo/index.html，按反馈用 Edit 修改（保持 window.__yoink.states 约定不变，如需可增删状态）。改完一句话说明改了什么。
+export function feedbackPrompt(feedback: string, history: string, spec: string, file = 'demo/index.html'): string {
+  return `当前目录下 ${file} 是根据 spec 生成的 UI 交互 demo${file !== 'demo/index.html' ? '（这是一个独立分支方案，只改这个文件，不要碰 demo/index.html）' : ''}。用户看过效果后给出反馈，请用 Read 读取 ${file}，按反馈用 Edit 修改（保持 window.__yoink.states 约定不变，如需可增删状态）。改完一句话说明改了什么。
 
 用户这次的反馈：
 ${feedback}
@@ -203,8 +212,8 @@ ${feedback || '（无）'}
 FEEDBACK`;
 }
 
-export function tweaksPrompt(focus: string, feedback: string, craft: string): string {
-  return `当前目录下 demo/index.html 是一个 UI 交互 demo。请用 Read 读取它，然后用 Edit 把它重构成符合下面 Tweaks 约定的版本（行为和外观保持完全一致，只是把硬编码的参数抽成变量）：
+export function tweaksPrompt(focus: string, feedback: string, craft: string, file = 'demo/index.html'): string {
+  return `当前目录下 ${file} 是一个 UI 交互 demo${file !== 'demo/index.html' ? '（独立分支方案，只改这个文件）' : ''}。请用 Read 读取它，然后用 Edit 把它重构成符合下面 Tweaks 约定的版本（行为和外观保持完全一致，只是把硬编码的参数抽成变量）：
 
 ${DEMO_CONVENTION}
 
@@ -221,4 +230,21 @@ ${craft.trim() ? craft.slice(0, 1500) : '（无）'}
 - CSS 里所有用到这些参数的地方改为 var(--x)；JS 里改为现读 tweak("--x")（时长要 parseFloat）。
 - 保持 window.__yoink.states 不变。
 - 改完只回复一行：抽出了哪些 key。`;
+}
+
+export function retagPrompt(meta: PatternMeta, spec: string): string {
+  return `给下面这个 UI 交互 pattern 重新整理标签。
+
+${TAG_RULES}
+
+只输出一个 \`\`\`json 围栏：
+{"tag_facets": {"what": "...", "look": "...", "ux": "...", "feels_like": "...", "for": "..."}, "tech_hints": ["..."]}
+feels_like 想不到贴切的就省略。tech_hints 保留 2–5 个最关键的实现技术。
+
+当前名称：${meta.name}
+当前标签（太多太杂，要收）：${meta.tags.join(', ')}
+当前 tech_hints：${meta.tech_hints.join(', ') || '（无）'}
+
+spec：
+${spec.slice(0, 5000)}`;
 }

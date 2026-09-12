@@ -10,8 +10,9 @@ const ROW_H = 54;
  * (the app and yoink:// are different origins; the bridge is injected by the protocol handler).
  * Rows that don't fit the column height are paged.
  */
-export function TweaksPanel({ iframe, patternId, running, loadKey, onReload, hidden = [] }: { iframe: HTMLIFrameElement | null; patternId: string; running: boolean; loadKey: number; onReload: () => void; hidden?: string[] }) {
-  const { extractTweaks, applyTweaks, updateMeta } = useStore();
+export function TweaksPanel({ iframe, patternId, variant, running, loadKey, onReload, hidden = [] }: { iframe: HTMLIFrameElement | null; patternId: string; variant?: string; running: boolean; loadKey: number; onReload: () => void; hidden?: string[] }) {
+  const { extractTweaks, applyTweaks, updateMeta, updateVariant } = useStore();
+  const setHidden = (keys: string[]) => variant ? updateVariant(patternId, variant, { hidden_tweaks: keys }) : updateMeta(patternId, { hidden_tweaks: keys });
   const [focus, setFocus] = useState('');
   const [showFocus, setShowFocus] = useState(false);
   const [tweaks, setTweaks] = useState<Tweak[] | null>(null);
@@ -50,9 +51,9 @@ export function TweaksPanel({ iframe, patternId, running, loadKey, onReload, hid
   };
   const reset = () => post({ type: 'yoink:reset-tweaks', keys: (tweaks ?? []).map((t) => t.key) });
   const num = (v: string) => parseFloat(v) || 0;
-  const extract = async () => { setShowFocus(false); await extractTweaks(patternId, focus); };
-  const hide = (key: string) => updateMeta(patternId, { hidden_tweaks: [...hidden, key] });
-  const unhideAll = () => updateMeta(patternId, { hidden_tweaks: [] });
+  const extract = async () => { setShowFocus(false); await extractTweaks(patternId, focus, variant); };
+  const hide = (key: string) => setHidden([...hidden, key]);
+  const unhideAll = () => setHidden([]);
   const focusBox = (
     <div className="focus-box">
       <input autoFocus value={focus} onChange={(e) => setFocus(e.target.value)} placeholder='你想调什么？如"展开速度、竖线断开时机"，空着就按反馈记录挑' onKeyDown={(e) => { if (e.key === 'Enter') extract(); }} />
@@ -96,7 +97,7 @@ export function TweaksPanel({ iframe, patternId, running, loadKey, onReload, hid
         {pages > 1 && <span className="pager"><button className="ghost sm" disabled={cur === 0} onClick={() => setPage(cur - 1)}>‹</button>{cur + 1}/{pages}<button className="ghost sm" disabled={cur >= pages - 1} onClick={() => setPage(cur + 1)}>›</button></span>}
         {hidden.length > 0 && <button className="ghost sm" onClick={unhideAll}>已藏 {hidden.length}，全部显示</button>}
         <span className="spacer" />
-        <button className="primary sm" disabled={!dirty || running} onClick={async () => { await applyTweaks(patternId, values); setDirty(false); onReload(); }}>写回 demo</button>
+        <button className="primary sm" disabled={!dirty || running} onClick={async () => { await applyTweaks(patternId, values, variant); setDirty(false); onReload(); }}>写回 demo</button>
       </div>
     </div>
   );

@@ -25,8 +25,9 @@ export async function runClaude(opts: ClaudeRunOpts): Promise<string> {
   const args = [
     '-p', opts.prompt,
     '--output-format', 'stream-json', '--verbose',
-    '--allowedTools', ...opts.allowedTools,
   ];
+  // an empty --allowedTools list makes the CLI error out; omit the flag for tool-less prompts
+  if (opts.allowedTools.length) args.push('--allowedTools', ...opts.allowedTools);
   if (opts.model) args.push('--model', opts.model);
   if (opts.extraArgs) args.push(...opts.extraArgs);
 

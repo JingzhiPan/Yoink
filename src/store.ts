@@ -31,10 +31,12 @@ interface State {
   verify(id: string): Promise<void>;
   generateDemo(id: string): Promise<void>;
   screenshot(id: string, compare: boolean): Promise<void>;
-  feedback(id: string, text: string): Promise<void>;
+  feedback(id: string, text: string, variant?: string): Promise<void>;
+  retag(id: string): Promise<void>;
+  updateVariant(id: string, slug: string, patch: Record<string, unknown>): Promise<void>;
   confirmDemo(id: string): Promise<void>;
-  extractTweaks(id: string, focus?: string): Promise<void>;
-  applyTweaks(id: string, values: Record<string, string>): Promise<void>;
+  extractTweaks(id: string, focus?: string, variant?: string): Promise<void>;
+  applyTweaks(id: string, values: Record<string, string>, variant?: string): Promise<void>;
   generateSkill(id: string): Promise<void>;
   packSkill(id: string): Promise<void>;
   updateMeta(id: string, patch: Partial<PatternMeta>): Promise<void>;
@@ -116,10 +118,12 @@ export const useStore = create<State>((set, get) => {
     verify: (id) => wrap(id, 'verify', (j) => api.verify(j, id)),
     generateDemo: (id) => wrap(id, 'demo', (j) => api.generateDemo(j, id)),
     screenshot: (id, compare) => wrap(id, 'screenshot', (j) => api.screenshotDemo(j, id, compare)),
-    feedback: (id, text) => wrap(id, 'feedback', (j) => api.sendFeedback(j, id, text)),
+    feedback: (id, text, variant) => wrap(id, 'feedback', (j) => api.sendFeedback(j, id, text, variant)),
+    retag: (id) => wrap(id, 'retag', (j) => api.retag(j, id)),
+    async updateVariant(id, slug, patch) { await api.updateVariant(id, slug, patch); await afterStep(id); },
     confirmDemo: (id) => wrap(id, 'consolidate', (j) => api.confirmDemo(j, id)),
-    extractTweaks: (id, focus) => wrap(id, 'tweaks', (j) => api.extractTweaks(j, id, focus)),
-    async applyTweaks(id, values) { await api.applyTweaks(id, values); await afterStep(id); },
+    extractTweaks: (id, focus, variant) => wrap(id, 'tweaks', (j) => api.extractTweaks(j, id, focus, variant)),
+    async applyTweaks(id, values, variant) { await api.applyTweaks(id, values, variant); await afterStep(id); },
     generateSkill: (id) => wrap(id, 'skill', (j) => api.generateSkill(j, id)),
     async packSkill(id) { await api.packSkill(id); await afterStep(id); },
     async updateMeta(id, patch) { await api.updateMeta(id, patch); await afterStep(id); },

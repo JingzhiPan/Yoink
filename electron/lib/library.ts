@@ -137,7 +137,7 @@ async function listVariants(dir: string): Promise<DemoVariant[]> {
     if (!existsSync(idx)) continue;
     let m: any = {};
     try { m = JSON.parse(await readFile(path.join(vd, e.name, 'variant.json'), 'utf8')); } catch { /* */ }
-    out.push({ slug: e.name, name: m.name ?? e.name, created: m.created ?? '', note: m.note ?? '', index: idx });
+    out.push({ slug: e.name, name: m.name ?? e.name, created: m.created ?? '', note: m.note ?? '', index: idx, feedbackLog: await readOpt(path.join(vd, e.name, 'feedback.md')), hidden_tweaks: Array.isArray(m.hidden_tweaks) ? m.hidden_tweaks : [] });
   }
   return out.sort((a, b) => (a.created < b.created ? 1 : -1));
 }
@@ -149,8 +149,15 @@ export async function saveVariant(id: string, name: string, note = ''): Promise<
   const vd = path.join(dir, 'variants', slug);
   await mkdir(vd, { recursive: true });
   await cp(path.join(dir, 'demo'), vd, { recursive: true });
-  await writeFile(path.join(vd, 'variant.json'), JSON.stringify({ name, note, created: new Date().toISOString() }, null, 2));
+  // the variant's conversation continues from the fork point
+  if (existsSync(path.join(dir, 'demo-feedback.md'))) await cp(path.join(dir, 'demo-feedback.md'), path.join(vd, 'feedback.md'));
+  await writeFile(path.join(vd, 'variant.json'), JSON.stringify({ name, note, created: new Date().toISOString(), hidden_tweaks: [] }, null, 2));
   return listVariants(dir);
+}
+export async function updateVariant(id: string, slug: string, patch: Record<string, unknown>): Promise<void> {
+  const p = path.join(patternDir(id), 'variants', slug, 'variant.json');
+  let m: any = {}; try { m = JSON.parse(await readFile(p, 'utf8')); } catch { /* */ }
+  await writeFile(p, JSON.stringify({ ...m, ...patch }, null, 2));
 }
 export async function restoreVariant(id: string, slug: string): Promise<void> {
   const dir = patternDir(id);
@@ -160,6 +167,7 @@ export async function restoreVariant(id: string, slug: string): Promise<void> {
   await rm(path.join(dir, 'demo'), { recursive: true, force: true });
   await cp(vd, path.join(dir, 'demo'), { recursive: true });
   await rm(path.join(dir, 'demo', 'variant.json'), { force: true });
+  if (existsSync(path.join(dir, 'demo', 'feedback.md'))) { await cp(path.join(dir, 'demo', 'feedback.md'), path.join(dir, 'demo-feedback.md')); await rm(path.join(dir, 'demo', 'feedback.md'), { force: true }); }
   await rm(path.join(dir, 'demo-screenshots'), { recursive: true, force: true });
   await rm(path.join(dir, 'demo-compare.md'), { force: true });
 }
@@ -180,6 +188,7 @@ export async function forkPattern(id: string, newName: string, fromVariant?: str
     await rm(path.join(dst, 'demo'), { recursive: true, force: true });
     await cp(path.join(src, 'variants', fromVariant), path.join(dst, 'demo'), { recursive: true });
     await rm(path.join(dst, 'demo', 'variant.json'), { force: true });
+    if (existsSync(path.join(dst, 'demo', 'feedback.md'))) { await cp(path.join(dst, 'demo', 'feedback.md'), path.join(dst, 'demo-feedback.md')); await rm(path.join(dst, 'demo', 'feedback.md'), { force: true }); }
   }
   const meta = await readMeta(finalId);
   return updateMeta(finalId, { id: finalId, name: newName, status: 'demo_wip', favorite: false, demo_screenshot_count: 0, notes: `分支自 ${id}${fromVariant ? ' / ' + fromVariant : ''}`, created: new Date().toISOString().slice(0, 10) });

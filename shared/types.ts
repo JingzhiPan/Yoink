@@ -34,7 +34,12 @@ export interface PatternMeta {
   notes: string;
   favorite?: boolean;
   hidden_tweaks?: string[];   // tweak keys the user hid from the panel
+  tag_facets?: TagFacets;     // the same tags, keyed by facet
 }
+
+/** One tag per facet (feels_like optional). Tech goes to tech_hints, not tags. */
+export interface TagFacets { what?: string; look?: string; ux?: string; feels_like?: string; for?: string }
+export const TAG_FACET_LABEL: Record<keyof TagFacets, string> = { what: '是什么', look: '审美', ux: 'UX 方向', feels_like: '像什么', for: '干嘛用' };
 
 /** Everything the renderer needs to show a pattern. */
 export interface PatternDetail {
@@ -58,7 +63,7 @@ export interface PatternDetail {
 
 export interface ComparePair { shot: string; frame: string | null; note: string }
 
-export interface DemoVariant { slug: string; name: string; created: string; note: string; index: string; }
+export interface DemoVariant { slug: string; name: string; created: string; note: string; index: string; feedbackLog: string | null; hidden_tweaks: string[] }
 
 export interface Settings {
   inputMethod: InputMethod | null;
@@ -68,7 +73,7 @@ export interface Settings {
   ffmpegPath: string | null;
 }
 
-export type JobKind = 'extract' | 'parse' | 'verify' | 'demo' | 'screenshot' | 'feedback' | 'consolidate' | 'tweaks' | 'skill';
+export type JobKind = 'extract' | 'parse' | 'verify' | 'demo' | 'screenshot' | 'feedback' | 'consolidate' | 'tweaks' | 'skill' | 'retag';
 
 export interface JobEvent {
   jobId: string;

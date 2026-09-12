@@ -38,6 +38,9 @@ export function DemoTab({ d }: { d: PatternDetail }) {
   const shotName = (f: string) => f.split('/').pop() ?? f;
   const frameByName = (n: string | null) => (n ? d.frames.find((f) => shotName(f) === n) ?? null : null);
   const pairs = d.comparePairs?.length ? d.comparePairs : null;
+  const variant = preview ? d.variants.find((x) => x.index === preview) ?? null : null;
+  const vslug = variant?.slug;
+  const log = variant ? variant.feedbackLog : d.feedbackLog;
 
   return (
     <>
@@ -56,31 +59,31 @@ export function DemoTab({ d }: { d: PatternDetail }) {
               {!done && <button className="primary sm" disabled={running} onClick={() => confirmDemo(id)} title="确认后自动截图比对，并把你的校正合并回 spec">确认 demo ✓</button>}
               {done && <span className="status" style={{ ['--sc' as string]: 'var(--s-done)' }}>已确认</span>}
             </div>
-            <div className={`demo-area ${preview ? 'solo' : ''}`}>
+            <div className="demo-area">
               <ScaledFrame src={api.fileUrl(preview ?? d.demoIndex) + '?r=' + reloadKey} onFrame={setFrameEl} />
-              {!preview && <TweaksPanel iframe={frameEl} patternId={id} running={running} loadKey={reloadKey} onReload={() => refresh()} hidden={d.meta.hidden_tweaks ?? []} />}
+              <TweaksPanel key={vslug ?? 'main'} iframe={frameEl} patternId={id} variant={vslug} running={running} loadKey={reloadKey} onReload={() => refresh()} hidden={(variant ? variant.hidden_tweaks : d.meta.hidden_tweaks) ?? []} />
               {toast && <div className="toast" key={toast + reloadKey}>{toast}</div>}
             </div>
-            {preview && (() => { const v = d.variants.find((x) => x.index === preview); return v ? (
+            {variant && (() => { const v = variant; return v ? (
               <div className="callout variant-bar">
-                正在预览方案「{v.name}」，当前 demo 未改动。<span className="spacer" />
+                方案「{v.name}」是从当前 demo 分出去的独立工作区：下面的反馈和 tweaks 只改这个方案，不动主 demo。<span className="spacer" />
                 <button className="ghost sm" onClick={() => setPreview(null)}>回到当前 demo</button>
                 <button className="ghost sm" disabled={running} onClick={async () => { if (confirm(`用「${v.name}」覆盖当前 demo？建议先把当前 demo 另存。`)) { await restoreVariant(id, v.slug); refresh('已恢复为当前 demo'); } }}>恢复为当前</button>
                 <button className="ghost sm" disabled={running} onClick={() => setDialog({ title: `从「${v.name}」分支成新 pattern`, initial: `${d.meta.name} · ${v.name}`, label: '分支', run: (n) => forkPattern(id, n, v.slug) })}>分支</button>
                 <button className="ghost sm danger" onClick={async () => { if (confirm(`删除方案「${v.name}」？`)) await deleteVariant(id, v.slug); }}>删</button>
               </div>) : null; })()}
             <div className="row">
-              <h3>调 demo</h3><span className="spacer" />
-              <button className="sm" disabled={running} onClick={() => setDialog({ title: '另存当前 demo 为方案', initial: `方案 ${d.variants.length + 1}`, label: '另存', run: (n) => saveVariant(id, n) })}>另存当前 demo 为方案</button>
-              <button className="sm" disabled={running} onClick={() => setDialog({ title: '分支成新 pattern', initial: d.meta.name + ' (variant)', label: '分支', run: (n) => forkPattern(id, n) })}>分支成新 pattern</button>
+              <h3>{variant ? `调方案「${variant.name}」` : '调 demo'}</h3><span className="spacer" />
+              {!variant && <button className="sm" disabled={running} onClick={() => setDialog({ title: '另存当前 demo 为方案', initial: `方案 ${d.variants.length + 1}`, label: '另存', run: (n) => saveVariant(id, n) })} title="复制一份当前 demo 作为独立方案，各改各的">另存当前 demo 为方案</button>}
+              {!variant && <button className="sm" disabled={running} onClick={() => setDialog({ title: '分支成新 pattern', initial: d.meta.name + ' (variant)', label: '分支', run: (n) => forkPattern(id, n) })}>分支成新 pattern</button>}
             </div>
             <div className="chat">
               <textarea placeholder='直接说："动画太快了" "颜色偏蓝，应该更接近原视频的紫色" "hover 状态缺了个阴影"' value={fb} onChange={(e) => setFb(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && fb.trim() && !running) { feedback(id, fb.trim()); setFb(''); } }} />
-              <button className="primary" disabled={!fb.trim() || running} onClick={() => { feedback(id, fb.trim()); setFb(''); }}>发给 Claude 改</button>
+                onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && fb.trim() && !running) { feedback(id, fb.trim(), vslug); setFb(''); } }} />
+              <button className="primary" disabled={!fb.trim() || running} onClick={() => { feedback(id, fb.trim(), vslug); setFb(''); }}>{variant ? '发给 Claude 改这个方案' : '发给 Claude 改'}</button>
             </div>
-            {d.feedbackLog && <div className="row"><button className="ghost sm" onClick={() => setShowLog(!showLog)}>{showLog ? '收起' : '查看'}修改记录</button></div>}
-            {showLog && d.feedbackLog && <Markdown text={d.feedbackLog} />}
+            {log && <div className="row"><button className="ghost sm" onClick={() => setShowLog(!showLog)}>{showLog ? '收起' : '查看'}修改记录</button></div>}
+            {showLog && log && <Markdown text={log} />}
           </>
         )}
         <JobLog job={job} />

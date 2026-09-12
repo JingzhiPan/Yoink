@@ -7,12 +7,12 @@ import { LIBRARY_ROOT, binary } from './lib/paths.js';
 import { extractFrames, makeUploadCopy } from './lib/ffmpeg.js';
 import { runClaude, extractJson } from './lib/claude.js';
 import { parseSpec, slugify } from './lib/parser.js';
-import { verifyPrompt, demoPrompt, feedbackPrompt, comparePrompt, skillPrompt, computerUsePrompt, consolidatePrompt, tweaksPrompt } from './lib/prompts.js';
+import { verifyPrompt, demoPrompt, feedbackPrompt, comparePrompt, skillPrompt, computerUsePrompt, consolidatePrompt, tweaksPrompt, retagPrompt } from './lib/prompts.js';
 import { screenshotDemo } from './lib/screenshot.js';
 import { parseWithOpenAI } from './lib/openai.js';
 import { makeCover, coverPath } from './lib/cover.js';
 import * as lib from './lib/library.js';
-import type { PatternMeta, Settings, JobEvent, JobKind, InputMethod, Category, Complexity } from '../shared/types.js';
+import type { PatternMeta, Settings, JobEvent, JobKind, InputMethod, Category, Complexity, TagFacets } from '../shared/types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isDev = !app.isPackaged;
@@ -140,7 +140,9 @@ async function stepVerify(jobId: string, id: string): Promise<PatternMeta> {
     const patch: Partial<PatternMeta> = { status: 'verified' };
     if (metaJson) {
       if (metaJson.name) patch.name = metaJson.name;
-      if (Array.isArray(metaJson.tags) && metaJson.tags.length) patch.tags = metaJson.tags.map(String);
+      const tf = facetsOf(metaJson);
+      if (tf) { patch.tag_facets = tf; patch.tags = Object.values(tf); }
+      else if (Array.isArray(metaJson.tags) && metaJson.tags.length) patch.tags = metaJson.tags.map(String).slice(0, 6);
       if (metaJson.category) patch.category = metaJson.category;
       if (metaJson.complexity) patch.complexity = metaJson.complexity;
       if (Array.isArray(metaJson.tech_hints)) patch.tech_hints = metaJson.tech_hints.map(String);
@@ -198,15 +200,48 @@ async function stepScreenshot(jobId: string, id: string, compare: boolean): Prom
   });
 }
 
-async function stepFeedback(jobId: string, id: string, feedback: string): Promise<PatternMeta> {
+/** Normalise the tag_facets object Claude returns; null if unusable. */
+function facetsOf(j: any): TagFacets | null {
+  const f = j?.tag_facets; if (!f || typeof f !== 'object') return null;
+  const out: TagFacets = {};
+  for (const k of ['what', 'look', 'ux', 'feels_like', 'for'] as const) {
+    const v = typeof f[k] === 'string' ? f[k].trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') : '';
+    if (v) out[k] = v;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+async function stepRetag(jobId: string, id: string): Promise<PatternMeta> {
+  return runJob(jobId, id, 'retag', async (log, signal) => {
+    const d = await lib.getPattern(id);
+    const spec = d.spec ?? d.rawSpec; if (!spec) throw new Error('还没有 spec');
+    log('Claude 正在按五个维度重新整理标签…');
+    const out = await runClaude({ prompt: retagPrompt(d.meta, spec), cwd: d.dir, allowedTools: [], onLog: log, signal });
+    const j = extractJson<any>(out.slice(out.lastIndexOf('```json')));
+    const tf = facetsOf(j); if (!tf) throw new Error('没解析到标签 JSON：\n' + out.slice(0, 300));
+    const patch: Partial<PatternMeta> = { tag_facets: tf, tags: Object.values(tf) };
+    if (Array.isArray(j.tech_hints)) patch.tech_hints = j.tech_hints.map(String).slice(0, 5);
+    return lib.updateMeta(id, patch);
+  });
+}
+
+/** A variant is its own conversation: its index.html + feedback.md, never demo/. */
+function variantTarget(d: Awaited<ReturnType<typeof lib.getPattern>>, slug?: string) {
+  if (!slug) return { file: 'demo/index.html', abs: d.demoIndex!, log: 'demo-feedback.md', history: d.feedbackLog ?? '' };
+  const v = d.variants.find((x) => x.slug === slug); if (!v) throw new Error('方案不存在');
+  return { file: `variants/${slug}/index.html`, abs: v.index, log: `variants/${slug}/feedback.md`, history: v.feedbackLog ?? '' };
+}
+
+async function stepFeedback(jobId: string, id: string, feedback: string, variant?: string): Promise<PatternMeta> {
   return runJob(jobId, id, 'feedback', async (log, signal) => {
     const d = await lib.getPattern(id);
     if (!d.demoIndex || !d.spec) throw new Error('还没有 demo');
+    const t = variantTarget(d, variant);
     const stamp = new Date().toISOString().slice(0, 16).replace('T', ' ');
-    log('Claude Code 正在按反馈修改 demo…');
-    const out = await runClaude({ prompt: feedbackPrompt(feedback, d.feedbackLog ?? '', d.spec), cwd: d.dir, allowedTools: ['Read', 'Write', 'Edit', 'Glob'], onLog: log, signal });
-    await lib.appendText(id, 'demo-feedback.md', `## ${stamp}\n**反馈：** ${feedback}\n\n**修改：** ${out.trim()}\n\n`);
-    return lib.updateMeta(id, { status: 'demo_wip' });
+    log(variant ? 'Claude Code 正在按反馈修改这个方案…' : 'Claude Code 正在按反馈修改 demo…');
+    const out = await runClaude({ prompt: feedbackPrompt(feedback, t.history, d.spec, t.file), cwd: d.dir, allowedTools: ['Read', 'Write', 'Edit', 'Glob'], onLog: log, signal });
+    await lib.appendText(id, t.log, `## ${stamp}\n**反馈：** ${feedback}\n\n**修改：** ${out.trim()}\n\n`);
+    return variant ? lib.readMeta(id) : lib.updateMeta(id, { status: 'demo_wip' });
   });
 }
 
@@ -227,25 +262,27 @@ async function stepConsolidate(jobId: string, id: string): Promise<PatternMeta> 
   });
 }
 
-async function stepTweaks(jobId: string, id: string, focus = ''): Promise<PatternMeta> {
+async function stepTweaks(jobId: string, id: string, focus = '', variant?: string): Promise<PatternMeta> {
   return runJob(jobId, id, 'tweaks', async (log, signal) => {
     const d = await lib.getPattern(id);
     if (!d.demoIndex) throw new Error('还没有 demo');
+    const t = variantTarget(d, variant);
     const craft = d.spec?.match(/## Craft Details([\s\S]*?)(\n## |$)/)?.[1] ?? '';
     log(focus ? `Claude Code 正在按「${focus}」抽取 tweaks…` : 'Claude Code 正在把 demo 的参数抽成 tweaks…');
-    await runClaude({ prompt: tweaksPrompt(focus, d.feedbackLog ?? '', craft), cwd: d.dir, allowedTools: ['Read', 'Write', 'Edit'], onLog: log, signal });
-    await lib.updateMeta(id, { hidden_tweaks: [] });
-    const html = await readFile(d.demoIndex, 'utf8');
+    await runClaude({ prompt: tweaksPrompt(focus, t.history, craft, t.file), cwd: d.dir, allowedTools: ['Read', 'Write', 'Edit'], onLog: log, signal });
+    if (variant) await lib.updateVariant(id, variant, { hidden_tweaks: [] }); else await lib.updateMeta(id, { hidden_tweaks: [] });
+    const html = await readFile(t.abs, 'utf8');
     if (!/id="yoink-tweaks"/.test(html) || !/__yoink\.tweaks/.test(html)) throw new Error('demo 里没找到 tweaks 约定的 style 块或清单');
     return lib.readMeta(id);
   });
 }
 
 /** Persist tweak values into the <style id="yoink-tweaks"> block of demo/index.html. */
-async function applyTweaks(id: string, values: Record<string, string>) {
+async function applyTweaks(id: string, values: Record<string, string>, variant?: string) {
   const d = await lib.getPattern(id);
   if (!d.demoIndex) throw new Error('还没有 demo');
-  let html = await readFile(d.demoIndex, 'utf8');
+  const t = variantTarget(d, variant);
+  let html = await readFile(t.abs, 'utf8');
   const m = html.match(/(<style id="yoink-tweaks">)([\s\S]*?)(<\/style>)/);
   if (!m) throw new Error('demo 里没有 yoink-tweaks style 块，先抽取 tweaks');
   let block = m[2];
@@ -254,7 +291,7 @@ async function applyTweaks(id: string, values: Record<string, string>) {
     block = re.test(block) ? block.replace(re, `$1${v}$2`) : block.replace(/}\s*$/, `  ${k}: ${v};\n}`);
   }
   html = html.replace(m[0], m[1] + block + m[3]);
-  await writeFile(d.demoIndex, html);
+  await writeFile(t.abs, html);
 }
 
 async function stepSkill(jobId: string, id: string): Promise<PatternMeta> {
@@ -337,10 +374,12 @@ ipcMain.handle('pipeline:parseAuto', (_e, jobId: string, id: string, method: Inp
 ipcMain.handle('pipeline:verify', (_e, jobId: string, id: string) => stepVerify(jobId, id));
 ipcMain.handle('pipeline:demo', (_e, jobId: string, id: string) => stepDemo(jobId, id));
 ipcMain.handle('pipeline:screenshot', (_e, jobId: string, id: string, compare: boolean) => stepScreenshot(jobId, id, compare));
-ipcMain.handle('pipeline:feedback', (_e, jobId: string, id: string, fb: string) => stepFeedback(jobId, id, fb));
+ipcMain.handle('pipeline:feedback', (_e, jobId: string, id: string, fb: string, variant?: string) => stepFeedback(jobId, id, fb, variant));
+ipcMain.handle('pipeline:retag', (_e, jobId: string, id: string) => stepRetag(jobId, id));
+ipcMain.handle('variant:update', (_e, id: string, slug: string, patch: Record<string, unknown>) => lib.updateVariant(id, slug, patch));
 ipcMain.handle('pipeline:confirmDemo', (_e, jobId: string, id: string) => stepConsolidate(jobId, id));
-ipcMain.handle('pipeline:tweaks', (_e, jobId: string, id: string, focus?: string) => stepTweaks(jobId, id, focus ?? ''));
-ipcMain.handle('demo:applyTweaks', (_e, id: string, values: Record<string, string>) => applyTweaks(id, values));
+ipcMain.handle('pipeline:tweaks', (_e, jobId: string, id: string, focus?: string, variant?: string) => stepTweaks(jobId, id, focus ?? '', variant));
+ipcMain.handle('demo:applyTweaks', (_e, id: string, values: Record<string, string>, variant?: string) => applyTweaks(id, values, variant));
 ipcMain.handle('pipeline:skill', (_e, jobId: string, id: string) => stepSkill(jobId, id));
 ipcMain.handle('pipeline:packSkill', (_e, id: string) => lib.setStatus(id, 'skill_ready'));
 ipcMain.handle('pipeline:cancel', (_e, jobId: string) => { aborts.get(jobId)?.abort(); });

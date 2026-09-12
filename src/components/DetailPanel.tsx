@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { useStore } from '../store';
+import { useStore, runningJobsFor } from '../store';
+import { TAG_FACET_LABEL } from '../../shared/types';
 import { StatusBadge } from './common';
 import { SpecTab } from './SpecTab';
 import { DemoTab } from './DemoTab';
@@ -11,7 +12,8 @@ type Tab = 'spec' | 'demo' | 'skill';
 
 export function DetailPanel() {
   const d = useStore((s) => s.current);
-  const { updateMeta, deletePattern, refreshCover } = useStore();
+  const { updateMeta, deletePattern, refreshCover, retag } = useStore();
+  const jobs = useStore((s) => s.jobs);
   const [tab, setTab] = useState<Tab>('spec');
   const ref = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -36,7 +38,12 @@ export function DetailPanel() {
         <button className="ghost sm" onClick={() => api.showInFinder(d.dir)}>Finder</button>
         <button className="ghost sm danger" onClick={() => { if (confirm(`删除 ${d.meta.name}？整个文件夹都会删掉。`)) deletePattern(d.meta.id); }}>删除</button>
       </div>
-      <div className="tags">{d.meta.tags.map((t) => <span className="tag" key={t}>{t}</span>)}</div>
+      <div className="tags">
+        {d.meta.tag_facets
+          ? (Object.keys(TAG_FACET_LABEL) as (keyof typeof TAG_FACET_LABEL)[]).filter((k) => d.meta.tag_facets![k]).map((k) => <span className="tag facet" key={k} title={TAG_FACET_LABEL[k]}><i>{TAG_FACET_LABEL[k]}</i>{d.meta.tag_facets![k]}</span>)
+          : d.meta.tags.map((t) => <span className="tag" key={t}>{t}</span>)}
+        <button className="ghost sm retag" disabled={!!runningJobsFor(jobs, d.meta.id).length || !(d.spec || d.rawSpec)} onClick={() => retag(d.meta.id)} title="让 Claude 按「是什么 / 审美 / UX 方向 / 像什么 / 干嘛用」五个维度重收标签">{d.meta.tag_facets ? '重理标签' : '整理标签'}</button>
+      </div>
       <div className="tabs">
         <button className={tab === 'spec' ? 'on' : ''} onClick={() => setTab('spec')}>Spec</button>
         <button className={tab === 'demo' ? 'on' : ''} disabled={!hasSpec} onClick={() => setTab('demo')}>Demo</button>
