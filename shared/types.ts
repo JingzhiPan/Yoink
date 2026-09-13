@@ -77,6 +77,7 @@ export interface PatternDetail {
   handoff: string | null;            // handoff.md: facts / decisions / open / tweaks, built from the files above
   tweakList: TweakInfo[];            // parsed from demo/index.html manifest
   traits: Traits | null;             // traits.json: the pattern taken apart into reusable parts
+  adaptations: Adaptation[];         // adaptations/<slug>/: ports to other tokens / stacks
   comparePairs: ComparePair[] | null; // demo-compare.json: which original frame each demo shot corresponds to
   skillMd: string | null;
   skillFiles: string[];        // relative paths inside skill/
@@ -96,6 +97,7 @@ export interface Traits {
   replaceable: { key: string; what: string; range: string }[];
   fixed: string[];
 }
+export interface Adaptation { slug: string; name: string; stack: string; created: string; index: string | null; note: string | null; files: string[] }
 export interface TweakInfo { key: string; label: string; type: string; unit?: string }
 
 export interface ComparePair { shot: string; frame: string | null; note: string }
@@ -110,7 +112,7 @@ export interface Settings {
   ffmpegPath: string | null;
 }
 
-export type JobKind = 'extract' | 'parse' | 'verify' | 'demo' | 'screenshot' | 'feedback' | 'consolidate' | 'tweaks' | 'skill' | 'retag' | 'material' | 'outline' | 'materialize' | 'traits' | 'distill';
+export type JobKind = 'extract' | 'parse' | 'verify' | 'demo' | 'screenshot' | 'feedback' | 'consolidate' | 'tweaks' | 'skill' | 'retag' | 'material' | 'outline' | 'materialize' | 'traits' | 'distill' | 'adapt';
 
 export interface JobEvent {
   jobId: string;

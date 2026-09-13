@@ -128,6 +128,18 @@ server.registerTool('get_leaf', {
   return text(await readFile(p, 'utf8'));
 });
 
+server.registerTool('port_brief', {
+  description: 'Everything needed to port a pattern into your own codebase: traits (replaceable tokens with safe ranges, fixed constraints), the handoff page, and the reusable component files. Rule: change only what traits.replaceable allows, carry traits.fixed verbatim, keep the material layer stack and light convention.',
+  inputSchema: { pattern_id: z.string() },
+}, async ({ pattern_id }) => {
+  const d0 = dir(pattern_id);
+  const tp = path.join(d0, 'traits.json');
+  if (!existsSync(tp)) return fail(`pattern ${pattern_id} has no traits yet (confirm its demo in YOINK)`);
+  const sd = path.join(d0, 'skill');
+  const files = existsSync(sd) ? (await walk(sd)).filter((f) => /component\//.test(f)) : [];
+  return text({ rule: 'Change only traits.replaceable within its stated range. Carry every traits.fixed item verbatim. Keep the material layers, their path references and the light convention. If a requested change would violate a fixed item, refuse it and propose the nearest safe alternative.', traits: JSON.parse(await readFile(tp, 'utf8')), handoff: existsSync(path.join(d0, 'handoff.md')) ? await readFile(path.join(d0, 'handoff.md'), 'utf8') : null, component_files: files, demo: path.join(d0, 'demo', 'index.html') });
+});
+
 server.registerTool('get_skill', {
   description: 'Return the packaged skill: SKILL.md content plus absolute paths of the reusable component code. Only available when status is skill_ready (or demo_done with a generated skill).',
   inputSchema: { pattern_id: z.string() },

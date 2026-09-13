@@ -53,6 +53,7 @@ interface State {
   forkPattern(id: string, name: string, fromVariant?: string, deviation?: string): Promise<void>;
   outline(id: string, brief: string): Promise<void>;
   traits(id: string): Promise<void>;
+  adapt(id: string, opts: { name: string; stack: string; tokens: string; notes: string }): Promise<void>;
   distill(id: string): Promise<void>;
   materialize(id: string): Promise<void>;
 }
@@ -161,6 +162,7 @@ export const useStore = create<State>((set, get) => {
     async forkPattern(id, name, fromVariant, deviation) { const m = await api.forkPattern(id, name, fromVariant, deviation); await get().refreshList(); await get().open(m.id); },
     outline: (id, brief) => wrap(id, 'outline', (j) => api.outline(j, id, brief)),
     traits: (id) => wrap(id, 'traits', (j) => api.traits(j, id)),
+    adapt: (id, opts) => wrap(id, 'adapt', (j) => api.adapt(j, id, opts)),
     distill: (id) => wrap(id, 'distill', (j) => api.distill(j, id)),
     materialize: (id) => wrap(id, 'materialize', (j) => api.materialize(j, id)),
     async refreshCover(id) { await api.refreshCover(id); await afterStep(id); },

@@ -505,3 +505,39 @@ export function leavesBlock(leaves: { kind: string; slug: string; text: string }
   if (!leaves.length) return '';
   return leaves.map((l) => `<<<LEAF ${l.kind}/${l.slug}（库里沉淀的经验，优先于你自己的推断）\n${l.text.replace(/^---[\s\S]*?---\n/, '')}\nLEAF`).join('\n') + '\n';
 }
+
+/** Port a confirmed pattern to another brand / stack: touch only the replaceable parts, carry the fixed ones verbatim. */
+export function adaptPrompt(traits: string, tokens: string, stack: string, notes: string, outDir: string, hasSkill: boolean): string {
+  const target = stack === 'react' ? 'React 函数组件（TypeScript，Component.tsx，CSS 变量放在同目录 styles.css；再写一个 index.html 用 UMD React 从 cdnjs 加载并渲染它做预览）'
+    : stack === 'vue' ? 'Vue 3 单文件组件（Component.vue，<script setup>；再写一个 index.html 用 UMD Vue 从 cdnjs 加载并渲染它做预览）'
+    : '纯 HTML/CSS/JS 单文件 index.html';
+  return `把当前目录下这个已确认的 UI pattern 移植到另一套设计和技术栈。用 Read 读 demo/index.html${hasSkill ? ' 和 skill/component/ 里的代码' : ''}，零件清单在下面。输出写到 ${outDir}/。
+
+目标：${target}
+
+设计 tokens（要换成的）：
+${tokens.trim() || '（没给，只换技术栈，视觉原样）'}
+
+其他要求：
+${notes.trim() || '（无）'}
+
+铁律：
+- 只允许改零件清单里 **replaceable** 列出的东西，而且只能换到它标的范围内。tokens 里要求换的东西如果不在 replaceable 里、或者超出范围、或者会碰到 **fixed** 里任何一条，**不要换**，写进 ADAPT.md 的「拒绝」节说明为什么会露馅，给一个不露馅的折中。
+- fixed 里的每一条原样搬过去：灵魂、光源、层的引用关系、时长曲线、二元景深之类。移植不是重设计。
+- 材质层栈按原来的层数和引用关系搬，只换 albedo/颜色这类 token；高光锐度、边缘压暗、AO 不动。
+- 保留 window.__yoink.states（预览用）；tweaks 清单可以保留。
+- 不要引入运行时依赖（React/Vue 只用 cdnjs 的 UMD 做预览）。
+
+用 Write 写文件，再写 ${outDir}/ADAPT.md：
+## 换了什么
+- token → 原值 → 新值，一行一个
+## 没换 / 拒绝
+- 要求换但没换的，各写为什么
+## 接入
+- 怎么把这个组件放进目标项目（三五行）
+
+改完只回复一句：写了哪些文件。
+
+零件清单：
+${traits}`;
+}

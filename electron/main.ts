@@ -7,7 +7,7 @@ import { LIBRARY_ROOT, binary } from './lib/paths.js';
 import { extractFrames, makeUploadCopy } from './lib/ffmpeg.js';
 import { runClaude, extractJson } from './lib/claude.js';
 import { parseSpec, slugify } from './lib/parser.js';
-import { verifyPrompt, demoPrompt, feedbackPrompt, comparePrompt, skillPrompt, computerUsePrompt, consolidatePrompt, tweaksPrompt, retagPrompt, materialPrompt, selfCheckPrompt, modeBlock, outlinePrompt, materializePrompt, realismBlock, needsMaterialSkill, intentBlock, traitsPrompt, distillPrompt, leavesBlock } from './lib/prompts.js';
+import { verifyPrompt, demoPrompt, feedbackPrompt, comparePrompt, skillPrompt, computerUsePrompt, consolidatePrompt, tweaksPrompt, retagPrompt, materialPrompt, selfCheckPrompt, modeBlock, outlinePrompt, materializePrompt, realismBlock, needsMaterialSkill, intentBlock, traitsPrompt, distillPrompt, leavesBlock, adaptPrompt } from './lib/prompts.js';
 import { screenshotDemo } from './lib/screenshot.js';
 import { parseWithOpenAI } from './lib/openai.js';
 import { makeCover, coverPath, makeMaterialCrops, makeMaterialCropsFrom, cropRegion } from './lib/cover.js';
@@ -406,6 +406,25 @@ async function stepDistill(jobId: string, id: string): Promise<PatternMeta> {
   });
 }
 
+/** Port to other tokens / stack, guarded by traits.replaceable and traits.fixed. */
+async function stepAdapt(jobId: string, id: string, opts: { name: string; stack: string; tokens: string; notes: string }): Promise<PatternMeta> {
+  return runJob(jobId, id, 'adapt', async (log, signal) => {
+    const d = await lib.getPattern(id);
+    if (!d.demoIndex) throw new Error('需要 demo');
+    if (!d.traits) throw new Error('先在交接页拆零件，移植靠它知道什么能换');
+    const { slug, dir } = await lib.newAdaptationDir(id, opts.name, opts.stack);
+    log(`Claude 正在移植到「${opts.name}」（${opts.stack}）…`);
+    await runClaude({ prompt: adaptPrompt(JSON.stringify(d.traits, null, 1), opts.tokens, opts.stack, opts.notes, path.relative(d.dir, dir), !!d.skillMd), cwd: d.dir, allowedTools: ['Read', 'Write', 'Edit', 'Glob'], onLog: log, signal });
+    if (!existsSync(path.join(dir, 'ADAPT.md'))) throw new Error('Claude 没有写出 ADAPT.md');
+    if (existsSync(path.join(dir, 'index.html'))) {
+      log('截图看一眼…');
+      try { await screenshotDemo(path.join(dir, 'index.html'), path.join(dir, 'screenshots'), log); } catch (e: any) { log('预览截图失败：' + (e?.message ?? e)); }
+    }
+    log(`写到 adaptations/${slug}/`);
+    return lib.readMeta(id);
+  });
+}
+
 /** Shape first: rebuild silhouettes as single paths with point handles, flat-filled. */
 async function stepOutline(jobId: string, id: string, brief: string): Promise<PatternMeta> {
   return runJob(jobId, id, 'outline', async (log, signal) => {
@@ -533,6 +552,7 @@ ipcMain.handle('variant:save', (_e, id: string, name: string, note?: string) => 
 ipcMain.handle('variant:restore', (_e, id: string, slug: string) => lib.restoreVariant(id, slug));
 ipcMain.handle('variant:delete', (_e, id: string, slug: string) => lib.deleteVariant(id, slug));
 ipcMain.handle('pattern:fork', (_e, id: string, name: string, fromVariant?: string, deviation?: string) => lib.forkPattern(id, name, fromVariant, deviation ?? ''));
+ipcMain.handle('pipeline:adapt', (_e, jobId: string, id: string, opts: { name: string; stack: string; tokens: string; notes: string }) => stepAdapt(jobId, id, opts));
 ipcMain.handle('pipeline:traits', (_e, jobId: string, id: string) => stepTraits(jobId, id));
 ipcMain.handle('pipeline:distill', (_e, jobId: string, id: string) => stepDistill(jobId, id));
 ipcMain.handle('leaves:list', async () => (await lib.listLeaves(SEED_LEAVES)).map((l) => ({ kind: l.kind, slug: l.slug, file: l.file, match: l.match, builtin: l.builtin })));
@@ -618,7 +638,7 @@ app.whenReady().then(async () => {
       let data: Uint8Array | string = new Uint8Array(await readFile(filePath));
       const mime = MIME[path.extname(filePath).toLowerCase()] ?? 'application/octet-stream';
       // demo pages get a tiny postMessage bridge so the (cross-origin) app can read/set tweaks
-      if (/\/(demo|variants\/[^/]+)\/index\.html$/.test(filePath)) {
+      if (/\/(demo|variants\/[^/]+|adaptations\/[^/]+)\/index\.html$/.test(filePath)) {
         const html = Buffer.from(data).toString('utf8');
         data = /<\/body>/i.test(html) ? html.replace(/<\/body>/i, TWEAK_BRIDGE + '</body>') : html + TWEAK_BRIDGE;
       }

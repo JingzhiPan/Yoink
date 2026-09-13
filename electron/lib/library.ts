@@ -2,7 +2,7 @@ import { mkdir, readdir, readFile, writeFile, copyFile, stat, rm } from 'node:fs
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { LIBRARY_ROOT } from './paths.js';
-import type { PatternMeta, PatternDetail, PatternStatus, DemoVariant, JudgmentItem, TweakInfo, Traits } from '../../shared/types.js';
+import type { PatternMeta, PatternDetail, PatternStatus, DemoVariant, JudgmentItem, TweakInfo, Traits, Adaptation } from '../../shared/types.js';
 import { JUDGMENT_KIND_LABEL, MODE_LABEL, modeOf, REALISM_LABEL } from '../../shared/types.js';
 
 export function patternDir(id: string) { return path.join(LIBRARY_ROOT, id); }
@@ -96,6 +96,7 @@ async function getPatternRaw(id: string): Promise<PatternDetail> {
     consolidateDiff: await readOpt(path.join(dir, 'consolidate-diff.md')),
     handoff: null, tweakList: [],
     traits: await readJsonOpt<Traits>(path.join(dir, 'traits.json')),
+    adaptations: await listAdaptations(dir),
     comparePairs: await readJsonOpt(path.join(dir, 'demo-compare.json')),
     skillMd: await readOpt(path.join(dir, 'skill', 'SKILL.md')),
     skillFiles: await walk(path.join(dir, 'skill')),
@@ -359,4 +360,27 @@ export function leavesFor(meta: PatternMeta, leaves: Leaf[], max = 3): Leaf[] {
 export async function writeLeaf(kind: LeafKind, slug: string, text: string): Promise<string> {
   const d = path.join(LEAF_ROOT, kind); await mkdir(d, { recursive: true });
   const f = path.join(d, slug.replace(/[^a-z0-9-]/g, '-') + '.md'); await writeFile(f, text.trim() + '\n'); return f;
+}
+
+// ─── adaptations: ports of a confirmed pattern to other design tokens / stacks ───
+async function listAdaptations(dir: string): Promise<Adaptation[]> {
+  const ad = path.join(dir, 'adaptations');
+  if (!existsSync(ad)) return [];
+  const out: Adaptation[] = [];
+  for (const e of await readdir(ad, { withFileTypes: true })) {
+    if (!e.isDirectory()) continue;
+    const d = path.join(ad, e.name);
+    let m: any = {}; try { m = JSON.parse(await readFile(path.join(d, 'adapt.json'), 'utf8')); } catch { /* */ }
+    const files = (await walk(d)).filter((f) => f !== 'adapt.json');
+    out.push({ slug: e.name, name: m.name ?? e.name, stack: m.stack ?? 'html', created: m.created ?? '', index: existsSync(path.join(d, 'index.html')) ? path.join(d, 'index.html') : null, note: await readOpt(path.join(d, 'ADAPT.md')), files });
+  }
+  return out.sort((a, b) => (a.created < b.created ? 1 : -1));
+}
+export async function newAdaptationDir(id: string, name: string, stack: string): Promise<{ slug: string; dir: string }> {
+  let slug = name.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'port';
+  const root = path.join(patternDir(id), 'adaptations');
+  let final = slug, n = 2; while (existsSync(path.join(root, final))) final = `${slug}-${n++}`;
+  const dir = path.join(root, final); await mkdir(dir, { recursive: true });
+  await writeFile(path.join(dir, 'adapt.json'), JSON.stringify({ name, stack, created: new Date().toISOString() }, null, 2));
+  return { slug: final, dir };
 }

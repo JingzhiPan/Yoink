@@ -14,6 +14,7 @@ const api = {
   restoreVariant: (id: string, slug: string): Promise<void> => ipcRenderer.invoke('variant:restore', id, slug),
   deleteVariant: (id: string, slug: string): Promise<void> => ipcRenderer.invoke('variant:delete', id, slug),
   forkPattern: (id: string, name: string, fromVariant?: string, deviation?: string): Promise<PatternMeta> => ipcRenderer.invoke('pattern:fork', id, name, fromVariant, deviation),
+  adapt: (jobId: string, id: string, opts: { name: string; stack: string; tokens: string; notes: string }): Promise<PatternMeta> => ipcRenderer.invoke('pipeline:adapt', jobId, id, opts),
   traits: (jobId: string, id: string): Promise<PatternMeta> => ipcRenderer.invoke('pipeline:traits', jobId, id),
   distill: (jobId: string, id: string): Promise<PatternMeta> => ipcRenderer.invoke('pipeline:distill', jobId, id),
   listLeaves: (): Promise<{ kind: string; slug: string; file: string; match: string[]; builtin: boolean }[]> => ipcRenderer.invoke('leaves:list'),
